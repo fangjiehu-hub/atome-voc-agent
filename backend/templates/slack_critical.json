@@ -1,0 +1,50 @@
+{
+  "blocks": [
+    {
+      "type": "header",
+      "text": {
+        "type": "plain_text",
+        "text": ":rotating_light: CRITICAL: {{ title }}"
+      }
+    },
+    {
+      "type": "section",
+      "fields": [
+        {"type": "mrkdwn", "text": "*Severity:*\n{{ severity }}"},
+        {"type": "mrkdwn", "text": "*Category:*\n{{ category }}"},
+        {"type": "mrkdwn", "text": "*Post Count:*\n{{ post_count }}"},
+        {"type": "mrkdwn", "text": "*Platforms:*\n{{ platforms }}"}
+      ]
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "*Summary:*\n{{ summary }}"
+      }
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "*Routed to:*\n{{ departments }}"
+      }
+    },
+    {
+      "type": "actions",
+      "elements": [
+        {
+          "type": "button",
+          "text": {"type": "plain_text", "text": "View in Dashboard"},
+          "url": "{{ dashboard_url }}"
+        },
+        {
+          "type": "button",
+          "text": {"type": "plain_text", "text": "Acknowledge"},
+          "style": "primary",
+          "action_id": "ack_incident_{{ incident_id }}"
+        }
+      ]
+    }
+  ]
+}

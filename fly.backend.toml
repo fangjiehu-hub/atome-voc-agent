@@ -1,0 +1,26 @@
+app = "atome-voc-backend"
+primary_region = "sin"
+
+[build]
+  dockerfile = "Dockerfile.backend"
+
+[env]
+  API_HOST = "0.0.0.0"
+  API_PORT = "8000"
+  CORS_ORIGINS = "https://atome-voc-frontend.fly.dev"
+  TZ = "Asia/Manila"
+  CRAWL_SCHEDULE_HOURS = "8,20"
+  DIGEST_HOUR = "9"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

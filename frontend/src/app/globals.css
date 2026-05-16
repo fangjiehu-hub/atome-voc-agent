@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --brand-50: #f0f1f5;
+  --brand-100: #e0e3ec;
+  --brand-300: #8b95b0;
+  --brand-500: #141c30;
+  --brand-600: #0d1220;
+  --brand-700: #080c18;
+  --accent: #f0ff5f;
+  --coral: #ff5844;
+  --beige: #e6e6de;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+}

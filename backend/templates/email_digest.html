@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1F2937; margin: 0; padding: 0; background: #F8F9FB; }
+  .container { max-width: 640px; margin: 0 auto; padding: 24px; }
+  .header { background: linear-gradient(135deg, #F0356A, #B21548); color: #fff; padding: 24px; border-radius: 12px 12px 0 0; }
+  .header h1 { margin: 0; font-size: 20px; }
+  .header p { margin: 8px 0 0; opacity: 0.85; font-size: 14px; }
+  .body { background: #fff; padding: 24px; border: 1px solid #E5E7EB; border-top: none; border-radius: 0 0 12px 12px; }
+  .kpi-row { display: flex; gap: 12px; margin-bottom: 20px; }
+  .kpi { flex: 1; background: #F8F9FB; border-radius: 8px; padding: 12px; text-align: center; }
+  .kpi .value { font-size: 24px; font-weight: 700; color: #0F172A; }
+  .kpi .label { font-size: 11px; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; }
+  .incident { padding: 12px 0; border-bottom: 1px solid #F1F3F6; }
+  .incident:last-child { border-bottom: none; }
+  .sev { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; }
+  .sev-critical { background: #FEE2E2; color: #991B1B; }
+  .sev-high { background: #FFEDD5; color: #9A3412; }
+  .sev-medium { background: #FEF3C7; color: #92400E; }
+  .sev-low { background: #D1FAE5; color: #065F46; }
+  .inc-title { font-weight: 600; color: #0F172A; margin: 4px 0 2px; }
+  .inc-meta { font-size: 12px; color: #6B7280; }
+  .footer { text-align: center; padding: 16px; font-size: 12px; color: #9CA3AF; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>Atome VoC Daily Digest</h1>
+    <p>{{ date }} &middot; Philippines &middot; X/Twitter + Reddit</p>
+  </div>
+  <div class="body">
+    <div class="kpi-row">
+      <div class="kpi">
+        <div class="value">{{ total_mentions }}</div>
+        <div class="label">Total Mentions</div>
+      </div>
+      <div class="kpi">
+        <div class="value">{{ negative_count }}</div>
+        <div class="label">Negative</div>
+      </div>
+      <div class="kpi">
+        <div class="value">{{ incident_count }}</div>
+        <div class="label">Incidents</div>
+      </div>
+    </div>
+
+    <h3 style="font-size: 14px; color: #374151; margin: 16px 0 8px;">Incidents</h3>
+    {% for inc in incidents %}
+    <div class="incident">
+      <span class="sev sev-{{ inc.severity }}">{{ inc.severity | upper }}</span>
+      <div class="inc-title">{{ inc.title }}</div>
+      <div class="inc-meta">{{ inc.post_count }} posts &middot; {{ inc.category }} &middot; {{ inc.platforms | join(', ') }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="footer">
+    Atome VoC Early Warning Agent &middot; Automated daily digest
+  </div>
+</div>
+</body>
+</html>

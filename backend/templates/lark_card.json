@@ -1,0 +1,48 @@
+{
+  "msg_type": "interactive",
+  "card": {
+    "header": {
+      "title": {
+        "tag": "plain_text",
+        "content": "{{ title }}"
+      },
+      "template": "{{ color }}"
+    },
+    "elements": [
+      {
+        "tag": "div",
+        "fields": [
+          {"is_short": true, "text": {"tag": "lark_md", "content": "**Severity:** {{ severity }}"}},
+          {"is_short": true, "text": {"tag": "lark_md", "content": "**Category:** {{ category }}"}},
+          {"is_short": true, "text": {"tag": "lark_md", "content": "**Posts:** {{ post_count }}"}},
+          {"is_short": true, "text": {"tag": "lark_md", "content": "**Platforms:** {{ platforms }}"}}
+        ]
+      },
+      {
+        "tag": "div",
+        "text": {
+          "tag": "lark_md",
+          "content": "**Summary:** {{ summary }}"
+        }
+      },
+      {
+        "tag": "div",
+        "text": {
+          "tag": "lark_md",
+          "content": "**Routed to:** {{ departments }}"
+        }
+      },
+      {
+        "tag": "action",
+        "actions": [
+          {
+            "tag": "button",
+            "text": {"tag": "plain_text", "content": "View Dashboard"},
+            "type": "primary",
+            "url": "{{ dashboard_url }}"
+          }
+        ]
+      }
+    ]
+  }
+}
