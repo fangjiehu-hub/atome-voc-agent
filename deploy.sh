@@ -14,8 +14,8 @@ set -euo pipefail
 #   ./deploy.sh update   # Subsequent: just re-deploys both apps
 # ─────────────────────────────────────────────────────────
 
-BACKEND_APP="atome-voc-backend"
-FRONTEND_APP="atome-voc-frontend"
+BACKEND_APP="atome-voc-v2-backend"
+FRONTEND_APP="atome-voc-v2-frontend"
 REGION="sin"  # Singapore — closest to Philippines
 
 # ─── Helper ──────────────────────────────────────────────

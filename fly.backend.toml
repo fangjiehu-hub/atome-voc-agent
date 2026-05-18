@@ -1,4 +1,4 @@
-app = "atome-voc-backend"
+app = "atome-voc-v2-backend"
 primary_region = "sin"
 
 [build]
@@ -7,7 +7,7 @@ primary_region = "sin"
 [env]
   API_HOST = "0.0.0.0"
   API_PORT = "8000"
-  CORS_ORIGINS = "https://atome-voc-frontend.fly.dev"
+  CORS_ORIGINS = "https://atome-voc-v2-frontend.fly.dev"
   TZ = "Asia/Manila"
   CRAWL_SCHEDULE_HOURS = "8,20"
   DIGEST_HOUR = "9"

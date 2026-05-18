@@ -1,4 +1,4 @@
-app = "atome-voc-frontend"
+app = "atome-voc-v2-frontend"
 primary_region = "sin"
 
 [build]
