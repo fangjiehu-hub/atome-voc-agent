@@ -1,20 +1,28 @@
 """Shared test fixtures.
 
-Note: API tests require PostgreSQL (due to ARRAY columns).
-Run pure unit tests (test_dedup.py, test_severity.py) separately with:
-  python -m pytest tests/test_dedup.py tests/test_severity.py
+⚠️  IMPORTANT — DESTRUCTIVE FIXTURE WARNING
+The `db_session` fixture below calls `Base.metadata.drop_all()`. If pytest is
+run with DATABASE_URL pointing at a real database (instead of a dedicated test
+DB), this WILL drop all your data. We hard-override DATABASE_URL here to a
+separate test DB so this can never happen accidentally.
 
-Run API tests with a running PostgreSQL:
-  DATABASE_URL=postgresql+asyncpg://... python -m pytest tests/test_monitor.py
+If your test DB doesn't exist, create it once:
+    docker compose exec db createdb -U atome atome_voc_test
+
+Run pure unit tests (test_dedup, test_severity, test_engagement_calculator,
+test_v2_api) without any DB fixtures:
+    python -m pytest tests/test_dedup.py tests/test_severity.py \
+        tests/test_engagement_calculator.py tests/test_v2_api.py
 """
 
 import os
 
-# Override DB URL before any backend imports - use PostgreSQL for tests
-# Set this to your test DB. API tests won't run without PostgreSQL.
-os.environ.setdefault(
-    "DATABASE_URL",
-    "postgresql+asyncpg://atome:atome_secret@localhost:5432/atome_voc_test",
+# Force-override DATABASE_URL to a separate test database — even if the runtime
+# env has DATABASE_URL pointing at the main DB (as it does inside the backend
+# container). This protects against destroying production data with drop_all.
+os.environ["DATABASE_URL"] = os.environ.get(
+    "TEST_DATABASE_URL",
+    "postgresql+asyncpg://atome:atome_secret@db:5432/atome_voc_test",
 )
 
 import asyncio

@@ -1,85 +1,88 @@
-"""Prompt templates for the LLM annotation pipeline."""
+"""Prompt templates for the LLM annotation pipeline (v2 — design-aligned).
 
-SYSTEM_PROMPT = """You are a complaint classifier for Atome PH, a Buy Now Pay Later (BNPL) fintech service in the Philippines. Your job is to analyze social media posts and classify each one.
+Asks Claude to classify into the 13 categories from the Claude Design import,
+detect a short cluster topic, and produce a one-sentence summary. Engagement
+LEVEL is no longer asked of the LLM — it's computed deterministically from the
+post's likes/replies/reposts/comments via engagement_calculator.
+"""
+
+SYSTEM_PROMPT = """You are a complaint classifier for Atome PH, a Buy Now Pay Later (BNPL) fintech in the Philippines. For each social-media post, analyze the text and return structured JSON.
 
 For each post, determine:
-1. **is_negative**: Is this a complaint, negative experience, or risk signal about Atome? (true/false)
-2. **category**: One of the following categories:
-   - fraud: Scam allegations, unauthorized transactions, account takeover
-   - transaction: Payment processing failures, GCash/bank transfer issues, declined transactions
-   - refund: Refund requests, cancellation disputes, merchant refund problems
-   - spend_limit: Credit limit complaints, spending limit too low/high, limit changes
-   - account: Account access, login issues, KYC verification, account locked
-   - security: Security concerns, data privacy, 2FA issues
-   - app_bug: App crashes, glitches, performance issues, UX problems
-   - customer_service: CS response quality, wait times, unhelpful agents
-   - debt_collection: Collection harassment, aggressive tone, threats, unfair practices
-   - interest_rate: Interest/fee complaints, hidden charges, late fees, billing disputes
-   - not_negative: General mention — positive, neutral, or irrelevant
-3. **sub_issues**: One or more specific tags from:
-   - duplicate_charge, payment_declined, gcash_issue, bank_transfer_fail
-   - refund_delayed, merchant_dispute, cancellation_denied
-   - limit_too_low, limit_reduced, limit_increase_denied
-   - account_locked, login_fail, kyc_rejected
-   - app_crash, slow_loading, ui_confusing
-   - long_wait, unhelpful_agent, no_response
-   - harassment, threatening_calls, excessive_contact
-   - hidden_fees, overcharged, late_fee_dispute
-   - unauthorized_transaction, phishing, account_takeover
-4. **severity**: How severe is this complaint?
-   - none: Not a complaint or very minor
-   - low: Minor inconvenience, isolated issue
-   - medium: Actionable issue, needs team review
-   - high: Serious complaint, recurring pattern, or visible post
-   - critical: Major reputational/compliance/viral risk
-5. **language**: Primary language (en = English, tl = Tagalog/Filipino, mixed)
-6. **summary**: One concise sentence summarizing the complaint
 
-Severity should consider: sentiment intensity, topic sensitivity (debt_collection/fraud = higher), engagement/reach, evidence quality (screenshots mentioned = higher), and regulatory exposure.
+1. **is_negative** (bool) — Is this a complaint, negative experience, or risk signal about Atome?
+
+2. **category** — Exactly ONE key from this list (do not invent new categories):
+   - collections — Repayment chasing, SMS / call tone, agency conduct, harassment
+   - customer_service — Generic CS issues: slow reply, unhelpful agent, ignored ticket
+   - bayad — Issues paying via Bayad Center or partner outlets
+   - transaction — Failed, duplicate, or stuck transactions (declined, GCash fail, etc.)
+   - card_delivery — Card not delivered, lost in transit, wrong address
+   - fees — Late fees, hidden fees, interest, fee transparency complaints
+   - payment — Refunds, repayment failures, posting delays
+   - card_application — Application stuck, KYC rejected, approval delays
+   - limit_increase — Limit too low, denied increase, surprise reduction
+   - card_binding — Linking the card to wallets / merchants / app (Apple Pay, Maya, etc.)
+   - otp — OTP not arriving, delayed, or suspected-phish OTP messages
+   - user_review — Public ratings, reviews, influencer commentary (long-form opinion)
+   - fraud — Unauthorized transactions, account takeover, phishing claims
+   If the post is positive, neutral, or unrelated to Atome (e.g. spam, unrelated topic),
+   still pick the BEST-MATCHING category and set is_negative=false.
+
+3. **cluster_topic** (short string ≤ 80 chars) — A human-readable issue title that would
+   group this post with other similar complaints. Use clean Title Case. Examples:
+     - "Aggressive collection SMS / call complaints"
+     - "Card binding broken since v3.8.2"
+     - "GCash repayment failing"
+     - "Predatory APR / fee transparency complaints"
+   If the post doesn't clearly cluster with a recurring issue, write a short topic that
+   captures its specific gripe.
+
+4. **language** — Primary language: "en" (English), "tl" (Tagalog/Filipino), or "mixed" (Taglish)
+
+5. **summary** — One concise sentence (≤ 140 chars) summarizing what the user is saying.
+
+DO NOT output an engagement level or severity — those are computed downstream from
+the post's likes/replies/reposts/comments. Just classify the content.
 
 IMPORTANT — Filipino/Taglish language handling:
-Many posts will be in Taglish (mixed Tagalog + English) or pure Filipino. Classify these with the same rigor as English posts. Common Filipino complaint signals:
-- "hindi mabayaran" / "di mabayad" = cannot pay / payment issue
-- "nabawasan limit" / "binawasan" = credit limit reduced
-- "ang laki ng interest" / "sobrang mahal" = high interest/fees
-- "nagbabanta" / "tinatakot" / "pinapahiya" = threats / harassment (debt_collection)
-- "di gumagana" / "ayaw gumana" = not working (app_bug/transaction)
+Many posts will be Taglish (mixed) or pure Filipino. Common complaint signals:
+- "hindi mabayaran" / "di mabayad" = cannot pay (transaction / payment)
+- "nabawasan limit" / "binawasan" = credit limit reduced (limit_increase)
+- "ang laki ng interest" / "sobrang mahal" = high interest/fees (fees)
+- "nagbabanta" / "tinatakot" / "pinapahiya" = threats / harassment (collections)
+- "di gumagana" / "ayaw gumana" = not working (transaction / card_binding)
 - "nauto" / "inuto" = got scammed (fraud)
 - "walang sagot" / "di nag-reply" = no response (customer_service)
-- "pinapabalik bayad" / "siningil ulit" = double charge / re-billed (refund)
-- "tumawag collection" / "pinuntahan sa bahay" = collection call / home visit (debt_collection)
+- "pinapabalik bayad" / "siningil ulit" = double charge / re-billed (transaction)
+- "tumawag collection" / "pinuntahan sa bahay" = collection call / home visit (collections)
 Set language to "tl" for predominantly Filipino, "mixed" for Taglish, "en" for English."""
 
-BATCH_USER_TEMPLATE = """Classify each post below. Return a JSON array with one object per post.
+BATCH_USER_TEMPLATE = """Classify each post below. Return ONLY a JSON array; one object per post, in the same order.
 
 {posts_block}
 
-Return ONLY a JSON array like:
+Response shape (return ONLY this JSON, no prose, no markdown fences):
 [
   {{
     "index": 0,
     "is_negative": true,
     "category": "transaction",
-    "sub_issues": ["payment_declined", "gcash_issue"],
-    "severity": "medium",
+    "cluster_topic": "GCash repayment failing",
     "language": "en",
-    "summary": "User reports GCash payment to Atome was declined multiple times"
-  }},
-  ...
+    "summary": "User reports GCash repayment to Atome was declined multiple times"
+  }}
 ]"""
 
 
 def format_posts_block(posts: list[dict]) -> str:
-    """Format posts into indexed blocks for the LLM."""
+    """Format posts into indexed blocks for the LLM (engagement omitted —
+    the LLM doesn't need it to classify the content)."""
     lines = []
     for i, p in enumerate(posts):
         lines.append(f"--- Post {i} ---")
         lines.append(f"Platform: {p.get('platform', 'unknown')}")
         lines.append(f"Author: {p.get('author_handle', 'anonymous')}")
-        likes = p.get("engagement_likes", 0)
-        replies = p.get("engagement_replies", 0)
-        reposts = p.get("engagement_reposts", 0)
-        lines.append(f"Engagement: {likes} likes, {replies} replies, {reposts} reposts")
         lines.append(f"Text: {p.get('content_text', '')}")
         lines.append("")
     return "\n".join(lines)

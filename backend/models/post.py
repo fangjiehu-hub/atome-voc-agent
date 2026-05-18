@@ -38,17 +38,31 @@ class Post(Base):
     engagement_likes: Mapped[int] = mapped_column(Integer, default=0)
     engagement_replies: Mapped[int] = mapped_column(Integer, default=0)
     engagement_reposts: Mapped[int] = mapped_column(Integer, default=0)
+    engagement_comments: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Cached sum (likes + replies + reposts + comments). Recomputed at annotate time.
+    engagement_score: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    engagement_level: Mapped[str | None] = mapped_column(String(20))  # Low / Medium / High
     raw_json: Mapped[dict | None] = mapped_column(JSONB)
 
     # AI annotation fields
     is_negative: Mapped[bool | None] = mapped_column(Boolean)
     category: Mapped[str | None] = mapped_column(String(50))
     sub_issues: Mapped[list[str] | None] = mapped_column(ARRAY(String))
-    severity: Mapped[str | None] = mapped_column(String(20))  # none/low/medium/high/critical
+    severity: Mapped[str | None] = mapped_column(String(20))  # legacy: none/low/medium/high/critical
     language: Mapped[str | None] = mapped_column(String(5))  # en/tl/mixed
     summary: Mapped[str | None] = mapped_column(Text)
     ai_explanation: Mapped[str | None] = mapped_column(Text)
     annotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # Design-aligned per-mention fields
+    # New | In Review | Actioned | Closed | Rejected | Not Relevant | Duplicate
+    mention_status: Mapped[str] = mapped_column(String(30), default="New", server_default="New")
+    # Per-cluster grouping (free-form string id like "fees_apr"). Topic is the
+    # human-readable issue title shared across the cluster.
+    cluster_topic: Mapped[str | None] = mapped_column(Text)
+    cluster_id_str: Mapped[str | None] = mapped_column(String(64))
+    # Override of taxonomy's primary_owner (per-mention correction).
+    primary_owner: Mapped[str | None] = mapped_column(String(100))
 
     # Relations
     incident_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("incidents.id"))
