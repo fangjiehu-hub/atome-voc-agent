@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1440" />
+<title>Atome VoC · Routing redesign</title>
+
+<!-- Tailwind play CDN + brand config -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          brand: { 50: '#f0f1f5', 100: '#e0e3ec', 300: '#8b95b0', 500: '#141c30', 600: '#0d1220', 700: '#080c18' },
+          accent: '#f0ff5f', coral: '#ff5844', beige: '#e6e6de',
+        },
+        boxShadow: {
+          sm: '0 1px 2px rgba(15,23,42,0.04), 0 1px 3px rgba(15,23,42,0.06)',
+          md: '0 4px 12px rgba(15,23,42,0.06), 0 2px 4px rgba(15,23,42,0.04)',
+        },
+        borderRadius: { sm: '6px', md: '10px', lg: '14px' },
+      },
+    },
+  };
+</script>
+
+<style>
+  html, body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; }
+  body { -webkit-font-smoothing: antialiased; background: #F9FAFB; color: #1F2937; font-size: 14px; }
+  .line-clamp-1 { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+  .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+  .settings-input {
+    display: block;
+    width: 100%;
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 13.5px;
+    color: #111827;
+    background: #fff;
+  }
+  .settings-input:focus { outline: none; border-color: #141c30; box-shadow: 0 0 0 3px rgba(20,28,48,0.08); }
+</style>
+
+<!-- React + Babel (pinned) -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+
+<body>
+  <div id="root"></div>
+
+  <!-- Plain JS data layer -->
+  <script src="app/data.js"></script>
+
+  <!-- React components -->
+  <script type="text/babel" src="app/components.jsx"></script>
+  <script type="text/babel" src="app/drawer.jsx"></script>
+  <script type="text/babel" src="app/pages.jsx"></script>
+  <script type="text/babel" src="app/app.jsx"></script>
+</body>
+</html>
