@@ -5,6 +5,7 @@ primary_region = "sin"
   dockerfile = "frontend/Dockerfile"
   [build.args]
     NEXT_PUBLIC_API_URL = "https://atome-voc-v2-backend.fly.dev"
+    BACKEND_URL = "https://atome-voc-v2-backend.fly.dev"
 
 [env]
   NODE_ENV = "production"
