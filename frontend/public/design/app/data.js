@@ -41,6 +41,13 @@
     const text = (mention.text || "").toLowerCase();
     return (sensitiveKeywords || []).some((kw) => text.includes(kw.toLowerCase()));
   }
+  function sentimentOf(mention) {
+    // Prefer explicit override first, then stored field, then derive from isNegative
+    if (mention.sentiment) return mention.sentiment;
+    if (mention.isNegative === true)  return "Negative";
+    if (mention.isNegative === false) return "Positive";
+    return "Unclear";
+  }
   function routingFor(categoryKey, level, sensitive, settings) {
     const owner = ownerOf(categoryKey, settings);
     const isSensitiveCat = categoryKey === "fraud" || categoryKey === "collections";
@@ -210,20 +217,23 @@
       DEFAULT_OWNERSHIP = { ...(settings.ownership || {}) };
 
       MENTIONS = (mentions.items || []).map((m) => ({
-        id:        m.id,
-        clusterId: m.clusterId,
-        platform:  m.platform,
-        author:    m.author,
-        created:   m.created,
-        category:  m.category,
-        likes:     m.likes || 0,
-        replies:   m.replies || 0,
-        reposts:   m.reposts || 0,
-        comments:  m.comments || 0,
-        text:      m.text || "",
-        status:    m.status || "New",
-        market:    m.market || "PH",
-        url:       m.url || null,
+        id:         m.id,
+        clusterId:  m.clusterId,
+        platform:   m.platform,
+        author:     m.author,
+        created:    m.created,
+        category:   m.category,
+        likes:      m.likes || 0,
+        replies:    m.replies || 0,
+        reposts:    m.reposts || 0,
+        comments:   m.comments || 0,
+        text:       m.text || "",
+        status:     m.status || "New",
+        market:     m.market || "PH",
+        url:        m.url || null,
+        isNegative: m.isNegative,
+        sentiment:  m.isNegative === true ? "Negative" : m.isNegative === false ? "Positive" : "Unclear",
+        summary:    m.summary || null,
       }));
 
       CLUSTERS = {};
@@ -270,7 +280,7 @@
     loadSettings, saveSettings, resetSettings,
     loadCorrectionLog, saveCorrectionLog, appendCorrection,
     engagementOf, engagementLevel, taxonomyFor, ownerOf,
-    isSensitive, routingFor, viewMention, effectiveCategory,
+    isSensitive, sentimentOf, routingFor, viewMention, effectiveCategory,
     listClusters, dataFreshness,
   };
 

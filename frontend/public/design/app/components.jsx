@@ -14,7 +14,7 @@ function Sidebar({ route, navigate }) {
     { label: "Monitor", items: [
       { href: "overview", label: "Overview" },
       { href: "mentions", label: "Mentions" },
-      { href: "queue",    label: "Action Queue" },
+      { href: "queue",    label: "Items Needing Attention" },
     ]},
     { label: "Logic", items: [
       { href: "taxonomy",  label: "Taxonomy" },
@@ -59,7 +59,7 @@ function Sidebar({ route, navigate }) {
 
 // ---- Topbar ----------------------------------------------------------
 const PAGE_TITLES = {
-  overview: "Executive Overview", mentions: "Mentions", queue: "Action Queue",
+  overview: "Executive Overview", mentions: "Mentions", queue: "Items Needing Attention",
   taxonomy: "Taxonomy", routing: "Routing Matrix", methodology: "Methodology",
   rationale: "Logic & Rationale", settings: "Settings", log: "Correction Log",
 };
@@ -98,14 +98,35 @@ function DataFreshnessBanner({ settings }) {
       <span className="text-gray-300">·</span>
       <span>Market <strong className="text-gray-800">{settings.defaultMarket}</strong></span>
       <span className="text-gray-300">·</span>
-      <span>Sources <strong className="text-gray-800">{settings.defaultSource}</strong></span>
-      <span className="text-gray-300">·</span>
-      <span>Window <strong className="text-gray-800">{settings.defaultTimeWindow}</strong></span>
+      <span className="inline-flex items-center gap-1">
+        Active sources:&nbsp;
+        <span className="bg-gray-900 text-white px-1.5 py-0.5 rounded text-[9.5px] font-extrabold uppercase">X</span>
+        <span className="bg-[#FF4500] text-white px-1.5 py-0.5 rounded text-[9.5px] font-extrabold uppercase">RD</span>
+        <span className="text-gray-400 text-[11px] ml-1">(Facebook + TikTok: planned)</span>
+      </span>
     </div>
   );
 }
 
 // ---- Badges ----------------------------------------------------------
+const SENTIMENT_STYLES = {
+  "Positive": { bg: "#ECFDF5", text: "#047857", dot: "#10B981" },
+  "Negative": { bg: "#FEF2F2", text: "#991B1B", dot: "#EF4444" },
+  "Neutral":  { bg: "#F3F4F6", text: "#4B5563", dot: "#9CA3AF" },
+  "Unclear":  { bg: "#F5F3FF", text: "#6D28D9", dot: "#8B5CF6" },
+};
+
+function SentimentBadge({ sentiment }) {
+  const s = SENTIMENT_STYLES[sentiment] || SENTIMENT_STYLES["Unclear"];
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full tracking-wide"
+          style={{ backgroundColor: s.bg, color: s.text }}>
+      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: s.dot }}></span>
+      {sentiment || "Unclear"}
+    </span>
+  );
+}
+
 const LEVEL_STYLES = {
   Low:    { bg: "#ECFDF5", text: "#047857", dot: "#10B981" },
   Medium: { bg: "#FEF3C7", text: "#92400E", dot: "#F59E0B" },
@@ -262,8 +283,8 @@ function FilterSelect({ label, value, onChange, options }) {
 // ---- Export ----------------------------------------------------------
 Object.assign(window, {
   Sidebar, Topbar, DataFreshnessBanner,
-  EngagementBadge, StatusPill, ActionPill, EscalationFlag, OwnerPill, CategoryTag, PlatformPill,
+  EngagementBadge, SentimentBadge, StatusPill, ActionPill, EscalationFlag, OwnerPill, CategoryTag, PlatformPill,
   WhyRoutedHere, KPICard, PageHeader, FilterSelect,
-  LEVEL_STYLES, ACTION_STYLES, STATUS_STYLES, PAGE_TITLES,
+  LEVEL_STYLES, SENTIMENT_STYLES, ACTION_STYLES, STATUS_STYLES, PAGE_TITLES,
   cardCls, sectionTitleCls, sectionSubCls,
 });

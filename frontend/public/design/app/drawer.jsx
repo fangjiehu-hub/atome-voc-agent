@@ -52,18 +52,19 @@ function MiniBars({ items, color }) {
 }
 
 // ---- Drill-down content ----------------------------------------------
-// selector: { kind: 'category'|'owner'|'level'|'platform'|'cluster', value }
+// selector: { kind: 'category'|'owner'|'level'|'platform'|'cluster'|'sentiment'|'day', value }
 function DrillDownContent({ selector, settings, onCorrect, onClose, onNavigate }) {
   const all = VoC.MENTIONS.map((m) => VoC.viewMention(m, settings));
   const matches = all.filter((m) => {
     const eng = VoC.engagementOf(m);
     const lv = VoC.engagementLevel(eng, settings.engagementThresholds);
-    if (selector.kind === "category") return m.category === selector.value;
-    if (selector.kind === "owner")    return VoC.ownerOf(m.category, settings) === selector.value;
-    if (selector.kind === "level")    return lv === selector.value;
-    if (selector.kind === "platform") return m.platform === selector.value;
-    if (selector.kind === "cluster")  return m.clusterId === selector.value;
-    if (selector.kind === "day")      return m.created.slice(0, 10) === selector.value;
+    if (selector.kind === "category")  return m.category === selector.value;
+    if (selector.kind === "owner")     return VoC.ownerOf(m.category, settings) === selector.value;
+    if (selector.kind === "level")     return lv === selector.value;
+    if (selector.kind === "platform")  return m.platform === selector.value;
+    if (selector.kind === "cluster")   return m.clusterId === selector.value;
+    if (selector.kind === "day")       return m.created.slice(0, 10) === selector.value;
+    if (selector.kind === "sentiment") return VoC.sentimentOf(m) === selector.value;
     return true;
   });
 
@@ -200,6 +201,7 @@ function MentionCard({ mention, settings, onCorrect, dense, hideWhy }) {
         <div className="flex flex-col items-center gap-1.5 pt-0.5">
           <PlatformPill platform={view.platform} />
           <EngagementBadge level={level} />
+          <SentimentBadge sentiment={VoC.sentimentOf(view)} />
         </div>
         <div className="min-w-0">
           <p className="text-[13px] text-gray-800 leading-relaxed mb-1.5">{view.text}</p>
@@ -257,11 +259,11 @@ function CorrectionMenu({ mention, settings, onCorrect }) {
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)}></div>
           <div className="absolute right-0 mt-1 w-[210px] bg-white border border-gray-200 rounded-lg shadow-md py-1 z-40 text-[12.5px]">
             {[
-              { k: "category", l: "Correct category" },
-              { k: "owner",    l: "Correct owner" },
+              { k: "category",    l: "Correct category" },
+              { k: "sentiment",   l: "Correct sentiment" },
               { k: "not_relevant", l: "Mark as not relevant" },
-              { k: "duplicate", l: "Mark as duplicate" },
-              { k: "comment",  l: "Add comment" },
+              { k: "duplicate",   l: "Mark as duplicate" },
+              { k: "comment",     l: "Add comment" },
             ].map((opt) => (
               <button key={opt.k}
                       onClick={() => { setOpen(false); onCorrect(opt.k, mention); }}
@@ -284,8 +286,8 @@ function CorrectionModal({ open, kind, mention, settings, onClose, onSubmit }) {
 
   useDrawerEffect(() => {
     if (!open) return;
-    if (kind === "category") setValue(mention.category);
-    else if (kind === "owner") setValue(VoC.ownerOf(mention.category, settings));
+    if (kind === "category")  setValue(mention.category);
+    else if (kind === "sentiment") setValue(VoC.sentimentOf(mention) || "Unclear");
     else setValue("");
     setComment(""); setClusterTarget("");
   }, [open, kind, mention && mention.id]);
@@ -296,11 +298,11 @@ function CorrectionModal({ open, kind, mention, settings, onClose, onSubmit }) {
   const clusters = VoC.listClusters(settings).filter((c) => c.clusterId !== mention.clusterId);
 
   const titles = {
-    category: "Correct category",
-    owner: "Correct owner",
+    category:    "Correct category",
+    sentiment:   "Correct sentiment",
     not_relevant: "Mark as not relevant",
-    duplicate: "Mark as duplicate",
-    comment: "Add comment",
+    duplicate:   "Mark as duplicate",
+    comment:     "Add comment",
   };
 
   function submit() {
@@ -316,9 +318,9 @@ function CorrectionModal({ open, kind, mention, settings, onClose, onSubmit }) {
       entry.correctedCategory = value;
       entry.correctedOwner = VoC.ownerOf(value, settings);
       onSubmit({ override: { category: value }, log: entry });
-    } else if (kind === "owner") {
-      entry.correctedOwner = value;
-      onSubmit({ override: { owner: value }, log: entry });
+    } else if (kind === "sentiment") {
+      entry.correctedSentiment = value;
+      onSubmit({ override: { sentiment: value, isNegative: value === "Negative" }, log: entry });
     } else if (kind === "not_relevant") {
       onSubmit({ override: { status: "Not Relevant" }, log: entry });
     } else if (kind === "duplicate") {
@@ -346,18 +348,22 @@ function CorrectionModal({ open, kind, mention, settings, onClose, onSubmit }) {
               <div className="text-[11px] text-gray-500 mt-1">Owner will follow Taxonomy automatically: <strong>{VoC.ownerOf(value || mention.category, settings)}</strong></div>
             </label>
           )}
-          {kind === "owner" && (
-            <div>
-              <label className="block">
-                <div className="text-[12px] font-semibold text-gray-700 mb-1">Correct owner (for this mention only)</div>
-                <select value={value} onChange={(e) => setValue(e.target.value)} className="settings-input">
-                  {owners.map((o) => <option key={o} value={o}>{o}</option>)}
-                </select>
-              </label>
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-[11.5px] text-amber-800 mt-2">
-                ⚠ For recurring issues, change the owner on the <a href="#/taxonomy" className="underline font-semibold">Taxonomy</a> page instead — that updates the whole category at once.
+          {kind === "sentiment" && (
+            <label className="block">
+              <div className="text-[12px] font-semibold text-gray-700 mb-1">Correct sentiment</div>
+              <div className="flex gap-2 mt-1">
+                {["Positive", "Negative", "Neutral", "Unclear"].map((s) => (
+                  <button key={s} onClick={() => setValue(s)}
+                          className={"flex-1 py-2 rounded-lg border text-[12px] font-semibold transition-colors " +
+                            (value === s
+                              ? "border-brand-500 bg-brand-50 text-brand-600"
+                              : "border-gray-200 text-gray-600 hover:bg-gray-50")}>
+                    {s}
+                  </button>
+                ))}
               </div>
-            </div>
+              <div className="text-[11px] text-gray-500 mt-2">AI originally classified this as: <strong>{VoC.sentimentOf(mention)}</strong></div>
+            </label>
           )}
           {kind === "not_relevant" && (
             <label className="block">
@@ -384,7 +390,7 @@ function CorrectionModal({ open, kind, mention, settings, onClose, onSubmit }) {
         <div className="px-5 pb-4 flex items-center justify-end gap-2">
           <button onClick={onClose} className="text-gray-600 px-3 py-1.5 rounded text-[13px] hover:bg-gray-100">Cancel</button>
           <button onClick={submit}
-                  disabled={kind === "duplicate" && !clusterTarget}
+                  disabled={(kind === "duplicate" && !clusterTarget) || (kind === "sentiment" && !value)}
                   className="bg-brand-500 text-white px-3.5 py-1.5 rounded text-[13px] font-semibold hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed">
             Save correction
           </button>

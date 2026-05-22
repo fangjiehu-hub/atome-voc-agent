@@ -32,6 +32,9 @@ function App() {
   function submitCorrection({ override, log: entry }) {
     if (!correction) return;
     const id = correction.mention.id;
+    // Capture original sentiment before override for the log
+    const existingView = VoC.viewMention(correction.mention, settings);
+    entry.originalSentiment = entry.originalSentiment || VoC.sentimentOf(existingView);
     const merged = { ...(settings.mentionOverrides[id] || {}), ...override };
     const newSettings = { ...settings, mentionOverrides: { ...settings.mentionOverrides, [id]: merged } };
     updateSettings(newSettings);
@@ -71,6 +74,9 @@ function App() {
     } else if (drawerSelector.kind === "level") {
       drawerTitle = drawerSelector.value + " engagement · Detailed view";
       drawerSub = "All mentions at this engagement level.";
+    } else if (drawerSelector.kind === "sentiment") {
+      drawerTitle = drawerSelector.value + " sentiment · Detailed view";
+      drawerSub = "All mentions classified as " + drawerSelector.value + ".";
     } else if (drawerSelector.kind === "platform") {
       drawerTitle = (drawerSelector.value === "twitter" ? "X / Twitter" : "Reddit") + " · Detailed view";
       drawerSub = "Mentions from this source.";
