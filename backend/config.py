@@ -50,7 +50,9 @@ class Settings(BaseSettings):
     apify_api_token: str = ""
     brave_api_key: str = ""
     reddit_user_agent: str = "AtomeVoC/1.0"
-    twitter_bearer_token: str = ""
+    reddit_client_id: str = ""       # Free Reddit OAuth app — create at reddit.com/prefs/apps
+    reddit_client_secret: str = ""
+    twitter_bearer_token: str = ""   # Free Twitter API v2 — create at developer.twitter.com
 
     # Alerting
     slack_webhook_url: str = ""

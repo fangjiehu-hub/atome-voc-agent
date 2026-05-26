@@ -358,27 +358,74 @@ def _parse_brave_reddit_result(result: dict, lookback_hours: int) -> dict | None
     }
 
 
-# ── Direct path (free, no credentials) ─────────────────────
+# ── Reddit OAuth path (free, works from datacenter IPs) ────
+
+
+async def _get_reddit_oauth_token() -> str | None:
+    """Obtain a Reddit app-only (client_credentials) OAuth token.
+
+    Register a free 'script' app at https://www.reddit.com/prefs/apps/ to get
+    REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET Fly secrets.
+    """
+    if not settings.reddit_client_id or not settings.reddit_client_secret:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                "https://www.reddit.com/api/v1/access_token",
+                auth=(settings.reddit_client_id, settings.reddit_client_secret),
+                data={"grant_type": "client_credentials", "device_id": "DO_NOT_TRACK_THIS_DEVICE"},
+                headers={"User-Agent": settings.reddit_user_agent},
+            )
+            resp.raise_for_status()
+            token = resp.json().get("access_token")
+            if token:
+                logger.info("Reddit OAuth token obtained successfully")
+            return token
+    except Exception:
+        logger.exception("Failed to obtain Reddit OAuth token")
+        return None
 
 
 async def _crawl_direct(lookback_hours: int) -> list[dict]:
-    """Direct Reddit search.json API — free, no API key required.
+    """Reddit OAuth API — authenticated, works from any IP including datacenters.
 
-    Performs both a global Reddit search (all subreddits) and targeted
-    per-subreddit searches for comprehensive Atome coverage.
-    Note: Reddit may rate-limit datacenter IPs; requests are spaced 2s apart.
+    Falls back to unauthenticated search.json if no OAuth credentials are set
+    (though the unauthenticated path is blocked by Reddit on most datacenter IPs).
+
+    OAuth setup (one-time, free):
+    1. Go to https://www.reddit.com/prefs/apps/ and click 'create another app'
+    2. Type: 'script', name: anything, redirect: http://localhost
+    3. Copy the client ID (under app name) and secret
+    4. Set Fly secrets: fly secrets set REDDIT_CLIENT_ID=... REDDIT_CLIENT_SECRET=...
     """
     all_posts: list[dict] = []
     seen_urls: set[str] = set()
 
-    async with httpx.AsyncClient(
-        headers={"User-Agent": settings.reddit_user_agent},
-        timeout=30.0,
-    ) as client:
+    token = await _get_reddit_oauth_token()
+
+    if token:
+        # Use authenticated OAuth API — works from datacenters, higher rate limits
+        base_url = "https://oauth.reddit.com"
+        headers = {
+            "User-Agent": settings.reddit_user_agent,
+            "Authorization": f"Bearer {token}",
+        }
+        logger.info("Reddit crawl using OAuth API (datacenter-safe)")
+    else:
+        # Fallback: unauthenticated — blocked on most cloud IPs
+        base_url = "https://www.reddit.com"
+        headers = {"User-Agent": settings.reddit_user_agent}
+        logger.warning(
+            "No REDDIT_CLIENT_ID/SECRET set — trying unauthenticated Reddit API "
+            "(likely blocked on Fly.io). Set Fly secrets to fix this."
+        )
+
+    async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
         # 1. Global Reddit search for each keyword (searches all subreddits)
         for keyword in KEYWORDS:
             try:
-                posts = await _search_reddit_global(client, lookback_hours, keyword)
+                posts = await _search_reddit_global(client, base_url, lookback_hours, keyword)
                 for p in posts:
                     if p["url"] not in seen_urls:
                         seen_urls.add(p["url"])
@@ -391,7 +438,7 @@ async def _crawl_direct(lookback_hours: int) -> list[dict]:
         # 2. Targeted per-subreddit search for broader coverage
         for sub in SUBREDDITS:
             try:
-                posts = await _search_subreddit(client, sub, lookback_hours, "Atome")
+                posts = await _search_subreddit(client, base_url, sub, lookback_hours, "Atome")
                 for p in posts:
                     if p["url"] not in seen_urls:
                         seen_urls.add(p["url"])
@@ -401,15 +448,15 @@ async def _crawl_direct(lookback_hours: int) -> list[dict]:
                 logger.exception(f"Failed to crawl r/{sub}")
             await asyncio.sleep(RATE_LIMIT_DELAY)
 
-    logger.info(f"Direct Reddit API: {len(all_posts)} posts total")
+    logger.info(f"Reddit direct/OAuth: {len(all_posts)} posts total")
     return all_posts
 
 
 async def _search_reddit_global(
-    client: httpx.AsyncClient, lookback_hours: int, keyword: str = "Atome"
+    client: httpx.AsyncClient, base_url: str, lookback_hours: int, keyword: str = "Atome"
 ) -> list[dict]:
-    """Search all of Reddit (not restricted to a subreddit) via the free JSON API."""
-    url = "https://www.reddit.com/search.json"
+    """Search all of Reddit (not restricted to a subreddit)."""
+    url = f"{base_url}/search.json"
     params = {
         "q": keyword,
         "sort": "new",
@@ -463,10 +510,10 @@ async def _search_reddit_global(
 
 
 async def _search_subreddit(
-    client: httpx.AsyncClient, subreddit: str, lookback_hours: int, keyword: str = "Atome"
+    client: httpx.AsyncClient, base_url: str, subreddit: str, lookback_hours: int, keyword: str = "Atome"
 ) -> list[dict]:
     """Search a subreddit for Atome mentions."""
-    url = f"https://www.reddit.com/r/{subreddit}/search.json"
+    url = f"{base_url}/r/{subreddit}/search.json"
     params = {
         "q": keyword,
         "restrict_sr": "on",
