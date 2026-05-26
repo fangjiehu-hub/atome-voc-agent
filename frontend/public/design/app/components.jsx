@@ -12,9 +12,10 @@ const sectionSubCls = "text-xs text-gray-500 mt-0.5";
 function Sidebar({ route, navigate }) {
   const groups = [
     { label: "Monitor", items: [
-      { href: "overview", label: "Overview" },
-      { href: "mentions", label: "All Posts with Filter" },
-      { href: "queue",    label: "Items Needing Attention" },
+      { href: "overview",       label: "Overview" },
+      { href: "mentions",       label: "All Posts with Filter" },
+      { href: "queue",          label: "Items Needing Attention" },
+      { href: "alert-history",  label: "Alert History" },
     ]},
     { label: "Logic", items: [
       { href: "taxonomy",  label: "Taxonomy" },
@@ -24,7 +25,7 @@ function Sidebar({ route, navigate }) {
     ]},
     { label: "Admin", items: [
       { href: "settings",        label: "Settings" },
-      { href: "alert-delivery",  label: "Alert Delivery" },
+      { href: "alert-delivery",  label: "Alert Setting" },
       { href: "log",             label: "Correction Log" },
     ]},
   ];
@@ -61,8 +62,9 @@ function Sidebar({ route, navigate }) {
 // ---- Topbar ----------------------------------------------------------
 const PAGE_TITLES = {
   overview: "Executive Overview", mentions: "All Posts with Filter", queue: "Items Needing Attention",
+  "alert-history": "Alert History",
   taxonomy: "Taxonomy", routing: "Routing Matrix", methodology: "Methodology",
-  rationale: "Logic & Rationale", settings: "Settings", "alert-delivery": "Alert Delivery", log: "Correction Log",
+  rationale: "Logic & Rationale", settings: "Settings", "alert-delivery": "Alert Setting", log: "Correction Log",
 };
 
 function Topbar({ route, settings }) {

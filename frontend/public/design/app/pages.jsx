@@ -1178,12 +1178,54 @@ function SettingField({ label, hint, children }) {
 const CHANNEL_LABELS = { lark_group: "Lark Group", owner_dm: "Owner DM" };
 const THRESHOLD_OPTIONS = ["Low", "Medium", "High"];
 
-function AlertDeliveryPage({ settings, navigate }) {
+function AlertDeliveryPage({ settings, navigate, updateSettings }) {
   const [configs, setConfigs] = useP([]);
   const [loading, setLoading] = useP(true);
   const [fetchErr, setFetchErr] = useP(null);
   const [editTarget, setEditTarget] = useP(null); // { config } | { taxonomy } for new
   const [testState, setTestState] = useP({}); // configId -> { loading, success, message }
+
+  // Schedule config local state
+  const [schedule, setSchedule] = useP({
+    daily: {
+      enabled:  settings.dailyAlertEnabled  ?? true,
+      time:     settings.dailyAlertTime     || "09:00",
+      timezone: settings.dailyAlertTimezone || "Asia/Singapore",
+    },
+    weekly: {
+      enabled:  settings.weeklySummaryEnabled  ?? true,
+      day:      settings.weeklySummaryDay      || "Monday",
+      time:     settings.weeklySummaryTime     || "09:00",
+      timezone: settings.weeklySummaryTimezone || "Asia/Singapore",
+    },
+  });
+  const [scheduleSaving, setScheduleSaving] = useP(false);
+  const [scheduleSaveResult, setScheduleSaveResult] = useP(null); // { success, message }
+
+  async function saveSchedule(section) {
+    setScheduleSaving(section);
+    const patch = section === "daily" ? {
+      dailyAlertEnabled:  schedule.daily.enabled,
+      dailyAlertTime:     schedule.daily.time,
+      dailyAlertTimezone: schedule.daily.timezone,
+    } : {
+      weeklySummaryEnabled:  schedule.weekly.enabled,
+      weeklySummaryDay:      schedule.weekly.day,
+      weeklySummaryTime:     schedule.weekly.time,
+      weeklySummaryTimezone: schedule.weekly.timezone,
+    };
+    try {
+      const r = await fetch("/api/v2/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!r.ok) { setScheduleSaveResult({ success: false, message: "Save failed." }); return; }
+      if (updateSettings) updateSettings({ ...settings, ...patch });
+      setScheduleSaveResult({ success: true, message: "Saved." });
+    } catch { setScheduleSaveResult({ success: false, message: "Save failed — check backend." }); }
+    finally { setScheduleSaving(false); }
+  }
 
   function loadConfigs() {
     setLoading(true);
@@ -1249,12 +1291,102 @@ function AlertDeliveryPage({ settings, navigate }) {
     } catch { alert("Save failed — check backend connection."); }
   }
 
+  const TZ_OPTIONS = ["Asia/Singapore", "Asia/Manila", "UTC"];
+  const DAY_OPTIONS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
   return (
     <div>
       <PageHeader
-        title="Alert Delivery Configuration"
-        subtitle="Control where VoC alerts are sent per taxonomy category — Lark group channels and/or direct owner messages."
+        title="Alert Setting"
+        subtitle="Configure when and where VoC alerts are delivered. Set digest schedules at the top, then configure per-category routing below."
       />
+
+      {/* Schedule config card */}
+      <div className={cardCls + " p-6 mb-5"}>
+        <h3 className={sectionTitleCls + " mb-4"}>Digest Schedule</h3>
+        {scheduleSaveResult && (
+          <div className={"text-[12.5px] mb-3 " + (scheduleSaveResult.success ? "text-green-700" : "text-red-600")}>
+            {scheduleSaveResult.success ? "✓ " : "✗ "}{scheduleSaveResult.message}
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-8">
+          {/* Daily Alert */}
+          <div>
+            <div className={sectionTitleCls + " text-[13px] mb-3"}>Daily Alert</div>
+            <div className="space-y-3">
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <button
+                  type="button"
+                  onClick={() => setSchedule((s) => ({ ...s, daily: { ...s.daily, enabled: !s.daily.enabled } }))}
+                  className={"w-9 h-5 rounded-full transition-colors relative " + (schedule.daily.enabled ? "bg-brand-500" : "bg-gray-300")}>
+                  <span className={"absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform " + (schedule.daily.enabled ? "translate-x-4" : "translate-x-0.5")} />
+                </button>
+                <span className="text-[13px] text-gray-700 font-medium">{schedule.daily.enabled ? "Enabled" : "Disabled"}</span>
+              </label>
+              <div>
+                <label className="block text-[12px] font-semibold text-gray-700 mb-1">Send Time</label>
+                <input type="time" value={schedule.daily.time}
+                  onChange={(e) => setSchedule((s) => ({ ...s, daily: { ...s.daily, time: e.target.value } }))}
+                  className="settings-input w-full" />
+              </div>
+              <div>
+                <label className="block text-[12px] font-semibold text-gray-700 mb-1">Timezone</label>
+                <select value={schedule.daily.timezone}
+                  onChange={(e) => setSchedule((s) => ({ ...s, daily: { ...s.daily, timezone: e.target.value } }))}
+                  className="settings-input w-full">
+                  {TZ_OPTIONS.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
+                </select>
+              </div>
+              <button onClick={() => saveSchedule("daily")} disabled={scheduleSaving === "daily"}
+                className="bg-brand-500 text-white px-4 py-2 rounded-lg text-[13px] font-semibold hover:bg-brand-600 disabled:opacity-60">
+                {scheduleSaving === "daily" ? "Saving…" : "Save Schedule"}
+              </button>
+            </div>
+          </div>
+
+          {/* Weekly Summary */}
+          <div>
+            <div className={sectionTitleCls + " text-[13px] mb-3"}>Weekly Summary</div>
+            <div className="space-y-3">
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <button
+                  type="button"
+                  onClick={() => setSchedule((s) => ({ ...s, weekly: { ...s.weekly, enabled: !s.weekly.enabled } }))}
+                  className={"w-9 h-5 rounded-full transition-colors relative " + (schedule.weekly.enabled ? "bg-brand-500" : "bg-gray-300")}>
+                  <span className={"absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform " + (schedule.weekly.enabled ? "translate-x-4" : "translate-x-0.5")} />
+                </button>
+                <span className="text-[13px] text-gray-700 font-medium">{schedule.weekly.enabled ? "Enabled" : "Disabled"}</span>
+              </label>
+              <div>
+                <label className="block text-[12px] font-semibold text-gray-700 mb-1">Day of Week</label>
+                <select value={schedule.weekly.day}
+                  onChange={(e) => setSchedule((s) => ({ ...s, weekly: { ...s.weekly, day: e.target.value } }))}
+                  className="settings-input w-full">
+                  {DAY_OPTIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[12px] font-semibold text-gray-700 mb-1">Send Time</label>
+                <input type="time" value={schedule.weekly.time}
+                  onChange={(e) => setSchedule((s) => ({ ...s, weekly: { ...s.weekly, time: e.target.value } }))}
+                  className="settings-input w-full" />
+              </div>
+              <div>
+                <label className="block text-[12px] font-semibold text-gray-700 mb-1">Timezone</label>
+                <select value={schedule.weekly.timezone}
+                  onChange={(e) => setSchedule((s) => ({ ...s, weekly: { ...s.weekly, timezone: e.target.value } }))}
+                  className="settings-input w-full">
+                  {TZ_OPTIONS.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
+                </select>
+              </div>
+              <button onClick={() => saveSchedule("weekly")} disabled={scheduleSaving === "weekly"}
+                className="bg-brand-500 text-white px-4 py-2 rounded-lg text-[13px] font-semibold hover:bg-brand-600 disabled:opacity-60">
+                {scheduleSaving === "weekly" ? "Saving…" : "Save Schedule"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Info banner */}
       <div className={cardCls + " p-4 mb-5 text-[12.5px] text-gray-700 bg-gradient-to-r from-indigo-50/60 to-white flex items-start gap-3"}>
@@ -1592,6 +1724,170 @@ function AlertDeliveryModal({ taxonomy, config, onClose, onSave }) {
 }
 
 // =========================================================
+//  ALERT HISTORY
+// =========================================================
+
+function AlertMessageDetailModal({ msg, onClose }) {
+  useE(() => {
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, []);
+
+  const ALERT_TYPE_STYLES = {
+    "daily_alert":    { bg: "#EFF6FF", text: "#1D4ED8", label: "Daily Alert" },
+    "weekly_summary": { bg: "#F5F3FF", text: "#6D28D9", label: "Weekly Summary" },
+    "post_alert":     { bg: "#FFF7ED", text: "#C2410C", label: "Post Alert" },
+  };
+  const STATUS_BADGE = {
+    sent:    { bg: "#D1FAE5", text: "#065F46" },
+    failed:  { bg: "#FEE2E2", text: "#991B1B" },
+    pending: { bg: "#F3F4F6", text: "#6B7280" },
+    skipped: { bg: "#F3F4F6", text: "#9CA3AF" },
+  };
+  const ts = ALERT_TYPE_STYLES[msg.alert_type] || ALERT_TYPE_STYLES["post_alert"];
+  const ss = STATUS_BADGE[msg.status] || STATUS_BADGE["pending"];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-y-auto max-h-[90vh]">
+        <div className="px-6 pt-5 pb-4 border-b border-gray-200 flex items-center justify-between">
+          <div>
+            <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold mr-2" style={{ background: ts.bg, color: ts.text }}>{ts.label}</span>
+            <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: ss.bg, color: ss.text }}>{msg.status}</span>
+            <div className="font-bold text-gray-900 text-[15px] mt-1.5">{msg.title || "(no title)"}</div>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg font-bold">✕</button>
+        </div>
+        <div className="px-6 py-5 space-y-4">
+          <div className="grid grid-cols-2 gap-3 text-[12.5px]">
+            <div><span className="text-gray-500">Generated</span><br /><strong>{msg.generated_at ? new Date(msg.generated_at).toLocaleString() : "—"}</strong></div>
+            <div><span className="text-gray-500">Sent</span><br /><strong>{msg.sent_at ? new Date(msg.sent_at).toLocaleString() : "—"}</strong></div>
+            <div><span className="text-gray-500">Channel</span><br /><strong>{msg.delivery_channel || "—"}</strong></div>
+            <div><span className="text-gray-500">Target</span><br /><strong className="break-all">{msg.target_name || msg.target_id || "—"}</strong></div>
+            {msg.taxonomy && <div><span className="text-gray-500">Category</span><br /><CategoryTag category={msg.taxonomy} /></div>}
+            {msg.error_message && (
+              <div className="col-span-2">
+                <span className="text-red-600 font-semibold text-[12px]">Error</span>
+                <div className="text-[12px] text-red-700 mt-0.5 font-mono bg-red-50 rounded p-2 break-all">{msg.error_message}</div>
+              </div>
+            )}
+          </div>
+          {msg.message_body && (
+            <div>
+              <div className="text-[11px] uppercase tracking-wider text-gray-400 font-bold mb-2">Message Body</div>
+              <pre className="whitespace-pre-wrap text-[12.5px] text-gray-800 bg-gray-50 rounded-xl p-4 border border-gray-100 font-sans leading-relaxed max-h-[300px] overflow-y-auto">{msg.message_body}</pre>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AlertHistoryPage({ settings }) {
+  const [messages, setMessages] = useP([]);
+  const [loading, setLoading] = useP(true);
+  const [fetchErr, setFetchErr] = useP(null);
+  const [detailMsg, setDetailMsg] = useP(null);
+
+  useE(() => {
+    fetch("/api/v2/alert-messages?limit=100")
+      .then((r) => r.json())
+      .then((d) => { setMessages(d.items || []); setLoading(false); })
+      .catch(() => { setFetchErr("Could not load from /api/v2/alert-messages. Backend may be unreachable."); setLoading(false); });
+  }, []);
+
+  const ALERT_TYPE_STYLES = {
+    "daily_alert":    { bg: "#EFF6FF", text: "#1D4ED8", label: "Daily Alert" },
+    "weekly_summary": { bg: "#F5F3FF", text: "#6D28D9", label: "Weekly Summary" },
+    "post_alert":     { bg: "#FFF7ED", text: "#C2410C", label: "Post Alert" },
+  };
+  const STATUS_STYLES_HISTORY = {
+    "sent":    { bg: "#D1FAE5", text: "#065F46" },
+    "failed":  { bg: "#FEE2E2", text: "#991B1B" },
+    "pending": { bg: "#F3F4F6", text: "#6B7280" },
+    "skipped": { bg: "#F3F4F6", text: "#9CA3AF", italic: true },
+  };
+
+  return (
+    <div>
+      <PageHeader
+        title="Alert History"
+        subtitle="Log of all daily alerts and weekly summaries generated by the scheduler."
+      />
+
+      {loading ? (
+        <div className={cardCls + " p-8 text-center text-gray-400 text-sm"}>Loading…</div>
+      ) : fetchErr ? (
+        <div className={cardCls + " p-8 text-center text-red-600 text-sm"}>{fetchErr}</div>
+      ) : messages.length === 0 ? (
+        <div className={cardCls + " p-10 text-center text-gray-400 text-sm"}>
+          No alert messages yet. Daily alerts and weekly summaries will appear here once the schedule runs.
+        </div>
+      ) : (
+        <div className={cardCls + " overflow-hidden"}>
+          <table className="w-full border-collapse text-[13px]">
+            <thead>
+              <tr>
+                {["Date / Time", "Alert Type", "Category", "Summary", "Channel", "Target", "Status", "Sent At", "Actions"].map((h) => (
+                  <th key={h} className="text-left text-[10.5px] uppercase tracking-wider text-gray-500 font-semibold px-3 py-2 border-b border-gray-200 bg-gray-50 whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {messages.map((msg) => {
+                const ts = ALERT_TYPE_STYLES[msg.alert_type] || ALERT_TYPE_STYLES["post_alert"];
+                const ss = STATUS_STYLES_HISTORY[msg.status] || STATUS_STYLES_HISTORY["pending"];
+                const dateStr = msg.generated_at
+                  ? new Date(msg.generated_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+                  : new Date(msg.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+                const sentStr = msg.sent_at
+                  ? new Date(msg.sent_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+                  : "—";
+                const summaryText = msg.message_body ? msg.message_body.split("\n")[0] : "—";
+                return (
+                  <tr key={msg.id} className="align-middle hover:bg-gray-50/40">
+                    <td className="px-3 py-3 border-b border-gray-100 text-[11.5px] text-gray-500 whitespace-nowrap">{dateStr}</td>
+                    <td className="px-3 py-3 border-b border-gray-100">
+                      <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap"
+                        style={{ background: ts.bg, color: ts.text }}>{ts.label}</span>
+                    </td>
+                    <td className="px-3 py-3 border-b border-gray-100">
+                      {msg.taxonomy ? <CategoryTag category={msg.taxonomy} /> : <span className="text-gray-400 text-[12px]">—</span>}
+                    </td>
+                    <td className="px-3 py-3 border-b border-gray-100 max-w-[260px]">
+                      <span className="text-[12px] text-gray-700 line-clamp-2">{summaryText}</span>
+                    </td>
+                    <td className="px-3 py-3 border-b border-gray-100 text-[12px] text-gray-600 whitespace-nowrap">{msg.delivery_channel || "—"}</td>
+                    <td className="px-3 py-3 border-b border-gray-100 text-[12px] text-gray-600 max-w-[160px] truncate" title={msg.target_name || msg.target_id || ""}>
+                      {msg.target_name || (msg.target_id ? msg.target_id.slice(0, 40) + "…" : "—")}
+                    </td>
+                    <td className="px-3 py-3 border-b border-gray-100">
+                      <span className={"inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap " + (ss.italic ? "italic" : "")}
+                        style={{ background: ss.bg, color: ss.text }}>{msg.status}</span>
+                    </td>
+                    <td className="px-3 py-3 border-b border-gray-100 text-[11.5px] text-gray-500 whitespace-nowrap">{sentStr}</td>
+                    <td className="px-3 py-3 border-b border-gray-100">
+                      <button onClick={() => setDetailMsg(msg)}
+                        className="text-[11.5px] text-indigo-600 hover:text-indigo-800 px-2 py-1 rounded hover:bg-indigo-50 font-medium">
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {detailMsg && <AlertMessageDetailModal msg={detailMsg} onClose={() => setDetailMsg(null)} />}
+    </div>
+  );
+}
+
+// =========================================================
 //  CORRECTION LOG
 // =========================================================
 function CorrectionLogPage({ settings, log, clearLog }) {
@@ -1671,5 +1967,5 @@ function CorrectionLogPage({ settings, log, clearLog }) {
 Object.assign(window, {
   OverviewPage, MentionsPage, ActionQueuePage, TaxonomyPage,
   RoutingMatrixPage, MethodologyPage, RationalePage, SettingsPage,
-  AlertDeliveryPage, CorrectionLogPage,
+  AlertDeliveryPage, AlertHistoryPage, CorrectionLogPage,
 });

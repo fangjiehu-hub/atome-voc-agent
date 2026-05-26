@@ -173,6 +173,13 @@
         ? (Array.isArray(SERVER_SETTINGS.defaultSource) ? SERVER_SETTINGS.defaultSource : (SERVER_SETTINGS.defaultSource ? [SERVER_SETTINGS.defaultSource] : ["X", "Reddit"]))
         : ["X", "Reddit"],
       defaultTimeWindow:    SERVER_SETTINGS ? SERVER_SETTINGS.defaultTimeWindow    : "7d",
+      dailyAlertEnabled:     SERVER_SETTINGS ? (SERVER_SETTINGS.dailyAlertEnabled    ?? true)  : true,
+      dailyAlertTime:        SERVER_SETTINGS ? (SERVER_SETTINGS.dailyAlertTime       || "09:00") : "09:00",
+      dailyAlertTimezone:    SERVER_SETTINGS ? (SERVER_SETTINGS.dailyAlertTimezone   || "Asia/Singapore") : "Asia/Singapore",
+      weeklySummaryEnabled:  SERVER_SETTINGS ? (SERVER_SETTINGS.weeklySummaryEnabled ?? true)  : true,
+      weeklySummaryDay:      SERVER_SETTINGS ? (SERVER_SETTINGS.weeklySummaryDay     || "Monday") : "Monday",
+      weeklySummaryTime:     SERVER_SETTINGS ? (SERVER_SETTINGS.weeklySummaryTime    || "09:00") : "09:00",
+      weeklySummaryTimezone: SERVER_SETTINGS ? (SERVER_SETTINGS.weeklySummaryTimezone|| "Asia/Singapore") : "Asia/Singapore",
     };
   }
 
@@ -211,6 +218,13 @@
         defaultMarket: s.defaultMarket,
         defaultSource: s.defaultSource,
         defaultTimeWindow: s.defaultTimeWindow,
+        dailyAlertEnabled:     s.dailyAlertEnabled,
+        dailyAlertTime:        s.dailyAlertTime,
+        dailyAlertTimezone:    s.dailyAlertTimezone,
+        weeklySummaryEnabled:  s.weeklySummaryEnabled,
+        weeklySummaryDay:      s.weeklySummaryDay,
+        weeklySummaryTime:     s.weeklySummaryTime,
+        weeklySummaryTimezone: s.weeklySummaryTimezone,
       }),
     }).catch(() => {});
   }

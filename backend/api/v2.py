@@ -157,6 +157,14 @@ class SettingsResponse(BaseModel):
     defaultSource: str
     defaultTimeWindow: str
     updatedAt: datetime | None
+    # Schedule config
+    dailyAlertEnabled: bool
+    dailyAlertTime: str
+    dailyAlertTimezone: str
+    weeklySummaryEnabled: bool
+    weeklySummaryDay: str
+    weeklySummaryTime: str
+    weeklySummaryTimezone: str
 
 
 class SettingsPatch(BaseModel):
@@ -166,6 +174,14 @@ class SettingsPatch(BaseModel):
     defaultMarket: str | None = None
     defaultSource: str | None = None
     defaultTimeWindow: str | None = None
+    # Schedule config
+    dailyAlertEnabled: bool | None = None
+    dailyAlertTime: str | None = None
+    dailyAlertTimezone: str | None = None
+    weeklySummaryEnabled: bool | None = None
+    weeklySummaryDay: str | None = None
+    weeklySummaryTime: str | None = None
+    weeklySummaryTimezone: str | None = None
 
 
 @router.get("/settings", response_model=SettingsResponse)
@@ -179,6 +195,14 @@ async def get_settings(db: AsyncSession = Depends(get_db)):
         defaultSource=s.default_source,
         defaultTimeWindow=s.default_time_window,
         updatedAt=s.updated_at,
+        # Schedule config — use column value if set, else sensible defaults
+        dailyAlertEnabled=s.daily_alert_enabled if s.daily_alert_enabled is not None else True,
+        dailyAlertTime=s.daily_alert_time or "09:00",
+        dailyAlertTimezone=s.daily_alert_timezone or "Asia/Singapore",
+        weeklySummaryEnabled=s.weekly_summary_enabled if s.weekly_summary_enabled is not None else True,
+        weeklySummaryDay=s.weekly_summary_day or "Monday",
+        weeklySummaryTime=s.weekly_summary_time or "09:00",
+        weeklySummaryTimezone=s.weekly_summary_timezone or "Asia/Singapore",
     )
 
 
@@ -202,6 +226,20 @@ async def update_settings(patch: SettingsPatch, db: AsyncSession = Depends(get_d
         s.default_source = patch.defaultSource
     if patch.defaultTimeWindow is not None:
         s.default_time_window = patch.defaultTimeWindow
+    if patch.dailyAlertEnabled is not None:
+        s.daily_alert_enabled = patch.dailyAlertEnabled
+    if patch.dailyAlertTime is not None:
+        s.daily_alert_time = patch.dailyAlertTime
+    if patch.dailyAlertTimezone is not None:
+        s.daily_alert_timezone = patch.dailyAlertTimezone
+    if patch.weeklySummaryEnabled is not None:
+        s.weekly_summary_enabled = patch.weeklySummaryEnabled
+    if patch.weeklySummaryDay is not None:
+        s.weekly_summary_day = patch.weeklySummaryDay
+    if patch.weeklySummaryTime is not None:
+        s.weekly_summary_time = patch.weeklySummaryTime
+    if patch.weeklySummaryTimezone is not None:
+        s.weekly_summary_timezone = patch.weeklySummaryTimezone
     await db.commit()
     return await get_settings(db)
 

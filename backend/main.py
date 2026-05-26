@@ -3,10 +3,11 @@
 from contextlib import asynccontextmanager
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api import alert_delivery, alerts, analytics, auth, crawler, feedback, incidents, lark_bots, monitor, routing, taxonomy, v2
+from backend.api import alert_delivery, alert_messages, alerts, analytics, auth, crawler, feedback, incidents, lark_bots, monitor, routing, taxonomy, v2
 from backend.config import settings
 
 
@@ -26,13 +27,11 @@ async def lifespan(app: FastAPI):
             replace_existing=True,
         )
 
-    # Daily digest at configured hour
+    # Alert schedule checker — runs every 30 minutes, service functions handle time-matching
     scheduler.add_job(
-        _scheduled_digest,
-        "cron",
-        hour=settings.digest_hour,
-        minute=0,
-        id="daily_digest",
+        _check_alert_schedules,
+        IntervalTrigger(minutes=30),
+        id="alert_schedule_check",
         replace_existing=True,
     )
 
@@ -50,11 +49,13 @@ async def _scheduled_crawl():
     await crawl_twitter(lookback_hours=12)
 
 
-async def _scheduled_digest():
-    """Send daily digest email."""
-    from backend.services.alerting import send_daily_digest
+async def _check_alert_schedules():
+    """Check and fire daily alert and weekly summary if their schedule matches now."""
+    from backend.services.daily_alert_v2 import generate_and_send_daily_alert
+    from backend.services.weekly_summary_v2 import generate_and_send_weekly_summary
 
-    await send_daily_digest()
+    await generate_and_send_daily_alert()
+    await generate_and_send_weekly_summary()
 
 
 app = FastAPI(
@@ -85,6 +86,7 @@ app.include_router(routing.router)
 # v2 — design-aligned endpoints consumed by the Claude Design frontend
 app.include_router(v2.router)
 app.include_router(alert_delivery.router)
+app.include_router(alert_messages.router)
 
 
 @app.get("/health")
