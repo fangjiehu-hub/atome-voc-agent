@@ -62,7 +62,13 @@ function DrillDownContent({ selector, settings, onCorrect, onClose, onNavigate }
     if (selector.kind === "owner")     return VoC.ownerOf(m.category, settings) === selector.value;
     if (selector.kind === "level")     return lv === selector.value;
     if (selector.kind === "platform")  return m.platform === selector.value;
-    if (selector.kind === "cluster")   return m.clusterId === selector.value;
+    if (selector.kind === "cluster") {
+      // "single_{id}" pseudo-clusters represent unclustered mentions; match by mention ID
+      if (selector.value && selector.value.startsWith("single_")) {
+        return String(m.id) === selector.value.replace("single_", "");
+      }
+      return m.clusterId === selector.value;
+    }
     if (selector.kind === "day")       return m.created.slice(0, 10) === selector.value;
     if (selector.kind === "sentiment") return VoC.sentimentOf(m) === selector.value;
     return true;
@@ -279,6 +285,11 @@ function MentionCard({ mention, settings, onCorrect, dense, hideWhy }) {
             <ActionPill label={routing.action} actionType={routing.actionType} />
             {routing.escalation && <EscalationFlag note={routing.escalationNote} compact />}
           </div>
+          {view.url
+            ? <a href={view.url} target="_blank" rel="noopener noreferrer"
+                 className="text-[11px] text-brand-500 hover:underline mt-1 inline-block">View source →</a>
+            : <span className="text-[11px] text-gray-400 italic mt-1 inline-block">Original post no longer available</span>
+          }
         </div>
         <div className="flex flex-col items-end gap-1.5 shrink-0">
           <StatusPill status={view.status} />

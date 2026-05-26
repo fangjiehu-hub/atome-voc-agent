@@ -140,22 +140,32 @@ function OverviewPage({ settings, openDrillDown, openCorrection, navigate }) {
         </div>
       </div>
 
-      {/* KPI Cards — 5 across */}
-      <div className="grid grid-cols-5 gap-3 mb-4">
+      {/* KPI Cards — 4 across (Positive + Negative merged into one card) */}
+      <div className="grid grid-cols-4 gap-3 mb-4">
         <button onClick={() => navigate("mentions")} className="text-left">
           <KPICard label="Total mentions" value={totalMentions} />
         </button>
-        <button onClick={() => openDrillDown({ kind: "sentiment", value: "Positive" })} className="text-left">
-          <KPICard label="Positive"
-                   value={positiveCnt}
-                   suffix={totalMentions ? `${Math.round(100 * positiveCnt / totalMentions)}%` : ""}  />
-        </button>
-        <button onClick={() => openDrillDown({ kind: "sentiment", value: "Negative" })} className="text-left">
-          <KPICard label="Negative"
-                   value={negativeCnt}
-                   suffix={totalMentions ? `${Math.round(100 * negativeCnt / totalMentions)}%` : ""}
-                   critical={negativeCnt > 0} />
-        </button>
+        {/* Merged sentiment card */}
+        <div className={cardCls + " p-4 flex flex-col gap-1"}>
+          <div className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold mb-1">Sentiment</div>
+          <div className="flex items-center gap-3">
+            <button onClick={() => openDrillDown({ kind: "sentiment", value: "Positive" })}
+                    className="flex items-baseline gap-1.5 hover:opacity-75">
+              <span className="text-[22px] font-bold leading-tight" style={{ color: "#10B981" }}>{positiveCnt}</span>
+              <span className="text-[12px] text-gray-500">{totalMentions ? Math.round(100 * positiveCnt / totalMentions) : 0}%</span>
+            </button>
+            <span className="text-gray-300 text-[18px] font-light">|</span>
+            <button onClick={() => openDrillDown({ kind: "sentiment", value: "Negative" })}
+                    className="flex items-baseline gap-1.5 hover:opacity-75">
+              <span className="text-[22px] font-bold leading-tight" style={{ color: "#DC2626" }}>{negativeCnt}</span>
+              <span className="text-[12px] text-gray-500">{totalMentions ? Math.round(100 * negativeCnt / totalMentions) : 0}%</span>
+            </button>
+          </div>
+          <div className="flex items-center gap-3 text-[10.5px] text-gray-400 mt-0.5">
+            <span style={{ color: "#10B981" }}>● Positive</span>
+            <span style={{ color: "#DC2626" }}>● Negative</span>
+          </div>
+        </div>
         <button onClick={() => openDrillDown({ kind: "level", value: "High" })} className="text-left">
           <KPICard label="High engagement" value={highEngCnt} />
         </button>
@@ -874,8 +884,8 @@ function SettingsPage({ settings, updateSettings, resetSettings }) {
 
   const owners = [...new Set(Object.values(VoC.DEFAULT_OWNERSHIP))];
   const allSecondaryOptions = ["Risk", "Product", "Legal", "Customer Services", "Collection"];
-  const marketOptions = VoC.MARKET_OPTIONS || ["PH", "ID", "MY", "SG", "TW"];
-  const sourceOptions = VoC.SOURCE_OPTIONS || ["X", "Reddit", "Facebook", "TikTok"];
+  const marketOptions = VoC.MARKET_OPTIONS || [{ value: "PH", label: "Philippines (PH)", active: true }];
+  const sourceOptions = VoC.SOURCE_OPTIONS || [{ value: "X", label: "X / Twitter", active: true }, { value: "Reddit", label: "Reddit", active: true }];
 
   function toggleSecondary(catKey, team) {
     setDraft((d) => {
@@ -1007,27 +1017,35 @@ function SettingsPage({ settings, updateSettings, resetSettings }) {
         <h3 className="text-base font-bold text-gray-900 mb-3">Display defaults</h3>
         <div className="grid grid-cols-3 gap-6">
           <div>
-            <div className="text-[12px] font-semibold text-gray-700 mb-2">Default market</div>
+            <div className="text-[12px] font-semibold text-gray-700 mb-1">Default market</div>
+            <div className="text-[10.5px] text-gray-400 mb-2">To add a new market, update MARKET_OPTIONS in data.js</div>
             <div className="space-y-1.5">
               {marketOptions.map((opt) => (
-                <label key={opt} className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={draft.defaultMarket.includes(opt)}
-                    onChange={() => toggleMultiSelect("defaultMarket", opt)}
+                <label key={opt.value} className={"flex items-center gap-2 " + (opt.active ? "cursor-pointer" : "cursor-not-allowed opacity-50")}>
+                  <input type="checkbox"
+                    checked={draft.defaultMarket.includes(opt.value)}
+                    onChange={() => opt.active && toggleMultiSelect("defaultMarket", opt.value)}
+                    disabled={!opt.active}
                     className="accent-brand-500 w-3.5 h-3.5" />
-                  <span className="text-[12.5px] text-gray-700">{opt}</span>
+                  <span className="text-[12.5px] text-gray-700">{opt.label}</span>
+                  {!opt.active && <span className="text-[10px] text-gray-400 italic">coming soon</span>}
                 </label>
               ))}
             </div>
           </div>
           <div>
-            <div className="text-[12px] font-semibold text-gray-700 mb-2">Default source</div>
+            <div className="text-[12px] font-semibold text-gray-700 mb-1">Default source</div>
+            <div className="text-[10.5px] text-gray-400 mb-2">To add a new source, update SOURCE_OPTIONS in data.js</div>
             <div className="space-y-1.5">
               {sourceOptions.map((opt) => (
-                <label key={opt} className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={draft.defaultSource.includes(opt)}
-                    onChange={() => toggleMultiSelect("defaultSource", opt)}
+                <label key={opt.value} className={"flex items-center gap-2 " + (opt.active ? "cursor-pointer" : "cursor-not-allowed opacity-50")}>
+                  <input type="checkbox"
+                    checked={draft.defaultSource.includes(opt.value)}
+                    onChange={() => opt.active && toggleMultiSelect("defaultSource", opt.value)}
+                    disabled={!opt.active}
                     className="accent-brand-500 w-3.5 h-3.5" />
-                  <span className="text-[12.5px] text-gray-700">{opt}</span>
+                  <span className="text-[12.5px] text-gray-700">{opt.label}</span>
+                  {!opt.active && <span className="text-[10px] text-gray-400 italic">coming soon</span>}
                 </label>
               ))}
             </div>

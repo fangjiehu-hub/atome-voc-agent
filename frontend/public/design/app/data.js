@@ -66,9 +66,22 @@
     "fraud":             ["Legal", "Collection"],
   };
 
-  // Available options for multi-select display defaults
-  const MARKET_OPTIONS = ["PH", "ID", "MY", "SG", "TW"];
-  const SOURCE_OPTIONS = ["X", "Reddit", "Facebook", "TikTok"];
+  // Available options for multi-select display defaults.
+  // { value, label, active } — active=true means the crawler is live; false=planned.
+  // To add a new market or source: add an entry here and deploy.
+  const MARKET_OPTIONS = [
+    { value: "PH", label: "Philippines (PH)", active: true  },
+    { value: "ID", label: "Indonesia (ID)",   active: false },
+    { value: "MY", label: "Malaysia (MY)",    active: false },
+    { value: "SG", label: "Singapore (SG)",   active: false },
+    { value: "TW", label: "Taiwan (TW)",      active: false },
+  ];
+  const SOURCE_OPTIONS = [
+    { value: "X",        label: "X / Twitter", active: true  },
+    { value: "Reddit",   label: "Reddit",       active: true  },
+    { value: "Facebook", label: "Facebook",     active: false },
+    { value: "TikTok",   label: "TikTok",       active: false },
+  ];
 
   // Prefer settings.secondaryOwnership (user-configured) → fall back to static map
   function secondaryTeamsOf(categoryKey, settings) {
