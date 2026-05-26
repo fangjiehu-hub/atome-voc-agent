@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     apify_api_token: str = ""
     brave_api_key: str = ""
     reddit_user_agent: str = "AtomeVoC/1.0"
+    twitter_bearer_token: str = ""
 
     # Alerting
     slack_webhook_url: str = ""

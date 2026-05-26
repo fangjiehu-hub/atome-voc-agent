@@ -1,4 +1,4 @@
-"""Reddit crawler — Apify Reddit Scraper (preferred), Brave Search fallback."""
+"""Reddit crawler — Apify (preferred) → Brave Search → direct Reddit JSON API (free)."""
 
 import asyncio
 import logging
@@ -49,16 +49,20 @@ async def crawl_reddit(lookback_hours: int = 24):
     """Crawl Reddit for Atome mentions and run full pipeline."""
     logger.info(f"Starting Reddit crawl (lookback={lookback_hours}h)")
 
-    # Priority: Apify (best coverage) → Brave (fallback) → Direct (local only)
+    # Priority: Apify → Brave Search → direct Reddit JSON API (free, no key needed)
+    all_posts: list[dict] = []
+
     if settings.apify_api_token:
         all_posts = await _crawl_via_apify(lookback_hours)
-        # Fall back to Brave if Apify returned nothing
-        if not all_posts and settings.brave_api_key:
-            logger.warning("Apify returned 0 posts, falling back to Brave Search")
-            all_posts = await _crawl_via_brave(lookback_hours)
-    elif settings.brave_api_key:
+        if not all_posts:
+            logger.warning("Apify returned 0 posts, trying free alternatives")
+
+    if not all_posts and settings.brave_api_key:
+        logger.info("Trying Brave Search for Reddit crawl")
         all_posts = await _crawl_via_brave(lookback_hours)
-    else:
+
+    if not all_posts:
+        logger.info("Trying direct Reddit JSON API (free, no credentials)")
         all_posts = await _crawl_direct(lookback_hours)
 
     # Save to DB
@@ -354,11 +358,16 @@ def _parse_brave_reddit_result(result: dict, lookback_hours: int) -> dict | None
     }
 
 
-# ── Direct path (last resort) ───────────────────────────────
+# ── Direct path (free, no credentials) ─────────────────────
 
 
 async def _crawl_direct(lookback_hours: int) -> list[dict]:
-    """Direct Reddit search.json — works locally but blocked from datacenter IPs."""
+    """Direct Reddit search.json API — free, no API key required.
+
+    Performs both a global Reddit search (all subreddits) and targeted
+    per-subreddit searches for comprehensive Atome coverage.
+    Note: Reddit may rate-limit datacenter IPs; requests are spaced 2s apart.
+    """
     all_posts: list[dict] = []
     seen_urls: set[str] = set()
 
@@ -366,20 +375,91 @@ async def _crawl_direct(lookback_hours: int) -> list[dict]:
         headers={"User-Agent": settings.reddit_user_agent},
         timeout=30.0,
     ) as client:
-        for sub in SUBREDDITS:
-            for keyword in KEYWORDS:
-                try:
-                    posts = await _search_subreddit(client, sub, lookback_hours, keyword)
-                    for p in posts:
-                        if p["url"] not in seen_urls:
-                            seen_urls.add(p["url"])
-                            all_posts.append(p)
-                    logger.info(f"r/{sub} [{keyword}]: found {len(posts)} posts")
-                except Exception:
-                    logger.exception(f"Failed to crawl r/{sub} [{keyword}]")
-                await asyncio.sleep(RATE_LIMIT_DELAY)
+        # 1. Global Reddit search for each keyword (searches all subreddits)
+        for keyword in KEYWORDS:
+            try:
+                posts = await _search_reddit_global(client, lookback_hours, keyword)
+                for p in posts:
+                    if p["url"] not in seen_urls:
+                        seen_urls.add(p["url"])
+                        all_posts.append(p)
+                logger.info(f"Global r/all [{keyword}]: found {len(posts)} posts")
+            except Exception:
+                logger.exception(f"Failed global search [{keyword}]")
+            await asyncio.sleep(RATE_LIMIT_DELAY)
 
+        # 2. Targeted per-subreddit search for broader coverage
+        for sub in SUBREDDITS:
+            try:
+                posts = await _search_subreddit(client, sub, lookback_hours, "Atome")
+                for p in posts:
+                    if p["url"] not in seen_urls:
+                        seen_urls.add(p["url"])
+                        all_posts.append(p)
+                logger.info(f"r/{sub} [Atome]: found {len(posts)} posts")
+            except Exception:
+                logger.exception(f"Failed to crawl r/{sub}")
+            await asyncio.sleep(RATE_LIMIT_DELAY)
+
+    logger.info(f"Direct Reddit API: {len(all_posts)} posts total")
     return all_posts
+
+
+async def _search_reddit_global(
+    client: httpx.AsyncClient, lookback_hours: int, keyword: str = "Atome"
+) -> list[dict]:
+    """Search all of Reddit (not restricted to a subreddit) via the free JSON API."""
+    url = "https://www.reddit.com/search.json"
+    params = {
+        "q": keyword,
+        "sort": "new",
+        "t": _reddit_time_filter(lookback_hours),
+        "limit": 100,
+    }
+
+    resp = await client.get(url, params=params)
+    resp.raise_for_status()
+    data = resp.json()
+
+    cutoff = datetime.utcnow() - timedelta(hours=lookback_hours)
+    posts = []
+
+    for child in data.get("data", {}).get("children", []):
+        item = child.get("data", {})
+        created = datetime.utcfromtimestamp(item.get("created_utc", 0))
+        if created < cutoff:
+            continue
+
+        text = f"{item.get('title', '')} {item.get('selftext', '')}".strip()
+
+        if is_too_short(text):
+            continue
+        if not mentions_brand(text):
+            continue
+        author = item.get("author", "")
+        if is_official_account(author):
+            continue
+
+        permalink = item.get("permalink", "")
+        post_url = f"https://reddit.com{permalink}" if permalink else ""
+        if not post_url:
+            continue
+
+        posts.append({
+            "platform": "reddit",
+            "brand": "atome_ph",
+            "post_id": item.get("id", ""),
+            "url": post_url,
+            "author_handle": author,
+            "content_text": text,
+            "created_at": created,
+            "engagement_likes": item.get("score", 0),
+            "engagement_replies": item.get("num_comments", 0),
+            "engagement_reposts": 0,
+            "raw_json": item,
+        })
+
+    return posts
 
 
 async def _search_subreddit(

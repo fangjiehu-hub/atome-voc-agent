@@ -1,4 +1,4 @@
-"""X/Twitter crawler — Apify Tweet Scraper (preferred), Brave Search fallback."""
+"""X/Twitter crawler — Apify (preferred) → Twitter API v2 free tier → Brave Search."""
 
 import asyncio
 import logging
@@ -20,12 +20,24 @@ from sqlalchemy.dialects.postgresql import insert
 logger = logging.getLogger(__name__)
 
 BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"
+TWITTER_API_BASE = "https://api.twitter.com/2"
 
 # Apify Tweet Scraper (apidojo~tweet-scraper — most popular, 138M+ runs)
 APIFY_TWEET_ACTOR_ID = "apidojo~tweet-scraper"
 APIFY_BASE = "https://api.apify.com/v2"
 APIFY_POLL_INTERVAL = 10  # seconds
 APIFY_TIMEOUT = 300  # max wait seconds
+
+# Twitter API v2 free tier: batched queries to stay within rate limits
+# Free tier: 500k tweets/month, 10 req/15 min on search/recent (7-day window)
+TWITTER_API_QUERIES = [
+    # Core brand + PH context
+    '"Atome" (Philippines OR Pilipinas OR bayad OR mabayaran OR utang) -is:retweet',
+    # Complaints / issues
+    '"Atome" (scam OR fraud OR complaint OR refund OR issue OR problem) -is:retweet',
+    # Financial product topics
+    '"Atome" (credit OR limit OR OTP OR collection OR interest OR overdue) -is:retweet',
+]
 
 KEYWORDS = [
     "Atome credit card Philippines",
@@ -55,17 +67,27 @@ async def crawl_twitter(lookback_hours: int = 24):
     """Crawl X/Twitter for Atome mentions and run full pipeline."""
     logger.info(f"Starting Twitter/X crawl (lookback={lookback_hours}h)")
 
-    # Priority: Apify (can actually scrape X) → Brave (fallback, limited X indexing)
+    # Priority: Apify → Twitter API v2 free → Brave Search
+    all_posts: list[dict] = []
+
     if settings.apify_api_token:
         all_posts = await _crawl_via_apify(lookback_hours)
-        # Fall back to Brave if Apify returned nothing
-        if not all_posts and settings.brave_api_key:
-            logger.warning("Apify returned 0 tweets, falling back to Brave Search")
-            all_posts = await _crawl_via_brave(lookback_hours)
-    elif settings.brave_api_key:
+        if not all_posts:
+            logger.warning("Apify returned 0 tweets, trying free alternatives")
+
+    if not all_posts and settings.twitter_bearer_token:
+        logger.info("Trying Twitter API v2 free tier")
+        all_posts = await _crawl_via_twitter_api(lookback_hours)
+
+    if not all_posts and settings.brave_api_key:
+        logger.info("Trying Brave Search for Twitter crawl")
         all_posts = await _crawl_via_brave(lookback_hours)
-    else:
-        logger.warning("No APIFY_API_TOKEN or BRAVE_API_KEY set, skipping Twitter crawl")
+
+    if not all_posts:
+        logger.warning(
+            "No Twitter data source available. Set TWITTER_BEARER_TOKEN (free at "
+            "developer.twitter.com) or APIFY_API_TOKEN to enable Twitter crawling."
+        )
         return
 
     saved = await _save_posts(all_posts)
@@ -235,6 +257,117 @@ def _parse_twitter_date(date_str: str) -> datetime:
     except (ValueError, TypeError):
         pass
     return datetime.utcnow()
+
+
+# ── Twitter API v2 free tier ────────────────────────────────
+
+
+async def _crawl_via_twitter_api(lookback_hours: int) -> list[dict]:
+    """Use Twitter API v2 search/recent endpoint (free tier, 7-day window).
+
+    Requires TWITTER_BEARER_TOKEN — get a free app token at developer.twitter.com.
+    Free tier: 500k tweet reads/month, 10 requests/15 min.
+    """
+    logger.info("Using Twitter API v2 (free tier / search/recent)")
+    all_posts: list[dict] = []
+    seen_ids: set[str] = set()
+
+    # Free tier only covers last 7 days; cap lookback accordingly
+    effective_hours = min(lookback_hours, 168)
+    start_time = datetime.utcnow() - timedelta(hours=effective_hours)
+    start_time_str = start_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    headers = {"Authorization": f"Bearer {settings.twitter_bearer_token}"}
+
+    async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
+        for query in TWITTER_API_QUERIES:
+            try:
+                params = {
+                    "query": query,
+                    "start_time": start_time_str,
+                    "max_results": 100,
+                    "tweet.fields": "created_at,public_metrics,author_id",
+                    "expansions": "author_id",
+                    "user.fields": "username,name",
+                }
+                resp = await client.get(
+                    f"{TWITTER_API_BASE}/tweets/search/recent",
+                    params=params,
+                )
+
+                if resp.status_code == 429:
+                    reset_ts = int(resp.headers.get("x-rate-limit-reset", 0))
+                    wait = max(reset_ts - int(datetime.utcnow().timestamp()), 15)
+                    logger.warning(f"Twitter API rate limited, waiting {wait}s")
+                    await asyncio.sleep(wait)
+                    continue
+
+                resp.raise_for_status()
+                data = resp.json()
+
+                tweets = data.get("data") or []
+                users = {
+                    u["id"]: u
+                    for u in data.get("includes", {}).get("users", [])
+                }
+
+                logger.info(f"Twitter API [{query[:55]}…]: {len(tweets)} tweets")
+
+                for tweet in tweets:
+                    tweet_id = tweet.get("id", "")
+                    if tweet_id in seen_ids:
+                        continue
+
+                    text = tweet.get("text", "")
+                    author_id = tweet.get("author_id", "")
+                    author_info = users.get(author_id, {})
+                    author = author_info.get("username", "")
+
+                    metrics = tweet.get("public_metrics", {})
+                    created_str = tweet.get("created_at", "")
+                    try:
+                        created = datetime.fromisoformat(
+                            created_str.replace("Z", "+00:00")
+                        ).replace(tzinfo=None)
+                    except (ValueError, TypeError):
+                        created = datetime.utcnow()
+
+                    # Filters
+                    if is_too_short(text):
+                        continue
+                    if not mentions_brand(text):
+                        continue
+                    if is_official_account(author):
+                        continue
+                    if is_noise_account(author):
+                        continue
+                    if not is_ph_relevant(text):
+                        continue
+
+                    url = f"https://x.com/{author}/status/{tweet_id}" if author else f"https://x.com/i/status/{tweet_id}"
+                    seen_ids.add(tweet_id)
+                    all_posts.append({
+                        "platform": "twitter",
+                        "brand": "atome_ph",
+                        "post_id": tweet_id,
+                        "url": url,
+                        "author_handle": author,
+                        "content_text": text,
+                        "created_at": created,
+                        "engagement_likes": metrics.get("like_count", 0),
+                        "engagement_replies": metrics.get("reply_count", 0),
+                        "engagement_reposts": metrics.get("retweet_count", 0),
+                        "raw_json": tweet,
+                    })
+
+            except Exception:
+                logger.exception(f"Twitter API query failed: {query[:55]}")
+
+            # Respect rate limit: 10 req/15 min → ~90s between requests to be safe
+            await asyncio.sleep(6)
+
+    logger.info(f"Twitter API v2: {len(all_posts)} posts after filtering")
+    return all_posts
 
 
 # ── Brave Search path (fallback) ────────────────────────────
