@@ -22,7 +22,7 @@
     return (m.likes || 0) + (m.replies || 0) + (m.reposts || 0) + (m.comments || 0);
   }
   function engagementLevel(value, thresholds) {
-    const { lowMax, mediumMax } = thresholds || { lowMax: 20, mediumMax: 100 };
+    const { lowMax, mediumMax } = thresholds || { lowMax: 20, mediumMax: 60 };
     if (value <= lowMax) return "Low";
     if (value <= mediumMax) return "Medium";
     return "High";
@@ -46,7 +46,27 @@
     if (mention.sentiment) return mention.sentiment;
     if (mention.isNegative === true)  return "Negative";
     if (mention.isNegative === false) return "Positive";
-    return "Unclear";
+    return "Neutral";
+  }
+
+  // ─── secondary teams mapping (mirrors lark_alert.py SECONDARY_TEAMS) ──
+  const SECONDARY_TEAMS_MAP = {
+    "collections":       ["Risk"],
+    "customer_service":  ["Product"],
+    "bayad":             ["Customer Services"],
+    "transaction":       ["Risk"],
+    "card_delivery":     ["Product"],
+    "fees":              ["Customer Services"],
+    "payment":           ["Risk"],
+    "card_application":  ["Customer Services"],
+    "limit_increase":    ["Product", "Customer Services"],
+    "card_binding":      ["Customer Services"],
+    "otp":               ["Product"],
+    "user_review":       ["Customer Services"],
+    "fraud":             ["Legal", "Collection"],
+  };
+  function secondaryTeamsOf(categoryKey) {
+    return SECONDARY_TEAMS_MAP[categoryKey] || [];
   }
   function routingFor(categoryKey, level, sensitive, settings) {
     const owner = ownerOf(categoryKey, settings);
@@ -116,7 +136,7 @@
   // ─── settings (server-backed, localStorage cache) ─────────────────────
   function buildDefaultSettings() {
     return {
-      engagementThresholds: SERVER_SETTINGS ? SERVER_SETTINGS.engagementThresholds : { lowMax: 20, mediumMax: 100 },
+      engagementThresholds: SERVER_SETTINGS ? SERVER_SETTINGS.engagementThresholds : { lowMax: 20, mediumMax: 60 },
       sensitiveKeywords:    SERVER_SETTINGS ? SERVER_SETTINGS.sensitiveKeywords    : ["fraud", "unauthorized", "scam", "phishing", "regulator", "BSP"],
       ownership:            SERVER_SETTINGS ? { ...SERVER_SETTINGS.ownership }     : { ...DEFAULT_OWNERSHIP },
       mentionOverrides:     {},
@@ -217,23 +237,25 @@
       DEFAULT_OWNERSHIP = { ...(settings.ownership || {}) };
 
       MENTIONS = (mentions.items || []).map((m) => ({
-        id:         m.id,
-        clusterId:  m.clusterId,
-        platform:   m.platform,
-        author:     m.author,
-        created:    m.created,
-        category:   m.category,
-        likes:      m.likes || 0,
-        replies:    m.replies || 0,
-        reposts:    m.reposts || 0,
-        comments:   m.comments || 0,
-        text:       m.text || "",
-        status:     m.status || "New",
-        market:     m.market || "PH",
-        url:        m.url || null,
-        isNegative: m.isNegative,
-        sentiment:  m.isNegative === true ? "Negative" : m.isNegative === false ? "Positive" : "Unclear",
-        summary:    m.summary || null,
+        id:             m.id,
+        clusterId:      m.clusterId,
+        platform:       m.platform,
+        author:         m.author,
+        created:        m.created,
+        category:       m.category,
+        likes:          m.likes || 0,
+        replies:        m.replies || 0,
+        reposts:        m.reposts || 0,
+        comments:       m.comments || 0,
+        text:           m.text || "",
+        status:         m.status || "New",
+        market:         m.market || "PH",
+        url:            m.url || null,
+        isNegative:     m.isNegative,
+        sentiment:      m.isNegative === true ? "Negative" : m.isNegative === false ? "Positive" : "Neutral",
+        summary:        m.summary || null,
+        alertStatus:    m.alertStatus || "Not triggered",
+        secondaryTeams: m.secondaryTeams || secondaryTeamsOf(m.category),
       }));
 
       CLUSTERS = {};
@@ -280,8 +302,9 @@
     loadSettings, saveSettings, resetSettings,
     loadCorrectionLog, saveCorrectionLog, appendCorrection,
     engagementOf, engagementLevel, taxonomyFor, ownerOf,
-    isSensitive, sentimentOf, routingFor, viewMention, effectiveCategory,
+    isSensitive, sentimentOf, secondaryTeamsOf, routingFor, viewMention, effectiveCategory,
     listClusters, dataFreshness,
+    SECONDARY_TEAMS_MAP,
   };
 
   // Kick off fetch and signal when done. app.jsx listens for this.

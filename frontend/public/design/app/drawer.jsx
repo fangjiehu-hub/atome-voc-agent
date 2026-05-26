@@ -108,6 +108,18 @@ function DrillDownContent({ selector, settings, onCorrect, onClose, onNavigate }
     }
   }
 
+  if (matches.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <svg className="w-10 h-10 text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <div className="text-[14px] font-semibold text-gray-500">No posts found</div>
+        <div className="text-[12px] text-gray-400 mt-1">No posts match this filter in the current data window.</div>
+      </div>
+    );
+  }
+
   return (
     <div>
       {/* Key metrics row */}
@@ -187,13 +199,58 @@ function DrillDownContent({ selector, settings, onCorrect, onClose, onNavigate }
 
 // ---- Mention card with correction menu -------------------------------
 function MentionCard({ mention, settings, onCorrect, dense, hideWhy }) {
-  const [expanded, setExpanded] = useDrawerState(false);
+  const [expanded, setExpanded]         = useDrawerState(false);
+  const [translation, setTranslation]   = useDrawerState(null);
+  const [translating, setTranslating]   = useDrawerState(false);
+  const [alertStatus, setAlertStatus]   = useDrawerState(mention.alertStatus || "Not triggered");
+  const [alerting, setAlerting]         = useDrawerState(false);
+  const [alertMsg, setAlertMsg]         = useDrawerState(null);
+
   const view = VoC.viewMention(mention, settings);
   const eng = VoC.engagementOf(view);
   const level = VoC.engagementLevel(eng, settings.engagementThresholds);
   const tax = VoC.taxonomyFor(view.category);
   const sensitive = VoC.isSensitive(view, settings.sensitiveKeywords);
   const routing = VoC.routingFor(view.category, level, sensitive, settings);
+
+  async function handleTranslate() {
+    if (translating || translation) return;
+    setTranslating(true);
+    try {
+      const res = await fetch("/api/v2/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: view.text }),
+      });
+      const data = await res.json();
+      setTranslation(data.translatedText || "[Translation unavailable]");
+    } catch (e) {
+      setTranslation("[Translation failed — backend unreachable]");
+    } finally {
+      setTranslating(false);
+    }
+  }
+
+  async function handleSendAlert() {
+    if (alerting) return;
+    setAlerting(true);
+    setAlertMsg(null);
+    try {
+      const res = await fetch(`/api/v2/alerts/trigger/${view.id}`, { method: "POST" });
+      let data;
+      try { data = await res.json(); } catch (_) { data = {}; }
+      if (!res.ok) {
+        setAlertMsg("❌ " + (data.detail || `Error ${res.status}`));
+        return;
+      }
+      setAlertStatus(data.alertStatus || "Triggered");
+      setAlertMsg(data.larkDelivered ? "✅ Alert sent to Lark." : "⚠️ Alert logged (Lark not configured).");
+    } catch (e) {
+      setAlertMsg("❌ Backend unreachable.");
+    } finally {
+      setAlerting(false);
+    }
+  }
 
   return (
     <div className="border border-gray-200 rounded-[12px] bg-white">
@@ -205,6 +262,12 @@ function MentionCard({ mention, settings, onCorrect, dense, hideWhy }) {
         </div>
         <div className="min-w-0">
           <p className="text-[13px] text-gray-800 leading-relaxed mb-1.5">{view.text}</p>
+          {translation && (
+            <p className="text-[12px] text-gray-500 italic mb-1.5 border-l-2 border-brand-300 pl-2">
+              <span className="text-[10.5px] font-bold uppercase tracking-wider text-brand-400 not-italic">EN · </span>
+              {translation}
+            </p>
+          )}
           <div className="flex items-center gap-2 flex-wrap text-[11.5px]">
             <span className="text-gray-500">@{view.author}</span>
             <span className="text-gray-300">·</span>
@@ -219,7 +282,20 @@ function MentionCard({ mention, settings, onCorrect, dense, hideWhy }) {
         </div>
         <div className="flex flex-col items-end gap-1.5 shrink-0">
           <StatusPill status={view.status} />
-          <div className="flex items-center gap-1">
+          <AlertStatusBadge status={alertStatus} />
+          <div className="flex items-center gap-1 flex-wrap justify-end">
+            {/* Translate button — always shown */}
+            <button onClick={handleTranslate} disabled={translating || !!translation}
+                    className="text-[11px] text-gray-500 hover:text-brand-500 flex items-center gap-0.5 px-1.5 py-0.5 rounded hover:bg-gray-50 disabled:opacity-50">
+              {translating ? "…" : translation ? "Translated" : "Translate"}
+            </button>
+            {/* Send Alert — only for High engagement, not yet triggered */}
+            {level === "High" && alertStatus === "Not triggered" && (
+              <button onClick={handleSendAlert} disabled={alerting}
+                      className="text-[11px] text-red-600 hover:text-red-800 font-semibold flex items-center gap-0.5 px-1.5 py-0.5 rounded hover:bg-red-50 disabled:opacity-50">
+                {alerting ? "Sending…" : "🔔 Alert"}
+              </button>
+            )}
             {onCorrect && <CorrectionMenu mention={mention} settings={settings} onCorrect={onCorrect} />}
             {!hideWhy && (
               <button onClick={() => setExpanded(!expanded)}
@@ -231,6 +307,7 @@ function MentionCard({ mention, settings, onCorrect, dense, hideWhy }) {
               </button>
             )}
           </div>
+          {alertMsg && <div className="text-[11px] text-gray-600 text-right max-w-[160px]">{alertMsg}</div>}
         </div>
       </div>
       {expanded && (
@@ -287,7 +364,7 @@ function CorrectionModal({ open, kind, mention, settings, onClose, onSubmit }) {
   useDrawerEffect(() => {
     if (!open) return;
     if (kind === "category")  setValue(mention.category);
-    else if (kind === "sentiment") setValue(VoC.sentimentOf(mention) || "Unclear");
+    else if (kind === "sentiment") setValue(VoC.sentimentOf(mention) || "Neutral");
     else setValue("");
     setComment(""); setClusterTarget("");
   }, [open, kind, mention && mention.id]);
@@ -352,7 +429,7 @@ function CorrectionModal({ open, kind, mention, settings, onClose, onSubmit }) {
             <label className="block">
               <div className="text-[12px] font-semibold text-gray-700 mb-1">Correct sentiment</div>
               <div className="flex gap-2 mt-1">
-                {["Positive", "Negative", "Neutral", "Unclear"].map((s) => (
+                {["Positive", "Negative", "Neutral"].map((s) => (
                   <button key={s} onClick={() => setValue(s)}
                           className={"flex-1 py-2 rounded-lg border text-[12px] font-semibold transition-colors " +
                             (value === s
@@ -362,7 +439,7 @@ function CorrectionModal({ open, kind, mention, settings, onClose, onSubmit }) {
                   </button>
                 ))}
               </div>
-              <div className="text-[11px] text-gray-500 mt-2">AI originally classified this as: <strong>{VoC.sentimentOf(mention)}</strong></div>
+              <div className="text-[11px] text-gray-500 mt-2">AI originally classified this as: <strong>{VoC.sentimentOf(mention) || "Neutral"}</strong></div>
             </label>
           )}
           {kind === "not_relevant" && (

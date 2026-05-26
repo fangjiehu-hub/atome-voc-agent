@@ -4,19 +4,23 @@ Shape of every response matches the design's data.js so the static prototype
 can swap mock data for these endpoints with minimal JS changes.
 
 Endpoints:
-    GET  /api/v2/settings      — app_settings singleton (camelCase keys)
-    PATCH /api/v2/settings     — partial update
-    GET  /api/v2/taxonomy      — 13-category taxonomy
-    GET  /api/v2/mentions      — paginated mentions in design shape
-    GET  /api/v2/clusters      — issue clusters grouped by cluster_id_str
-    GET  /api/v2/overview      — Today's snapshot KPIs
-    GET  /api/v2/corrections   — correction log
-    POST /api/v2/corrections   — submit a correction
+    GET   /api/v2/settings               — app_settings singleton (camelCase keys)
+    PATCH /api/v2/settings               — partial update
+    GET   /api/v2/taxonomy               — 13-category taxonomy
+    GET   /api/v2/mentions               — paginated mentions in design shape
+    GET   /api/v2/clusters               — issue clusters grouped by cluster_id_str
+    GET   /api/v2/overview               — Today's snapshot KPIs
+    GET   /api/v2/corrections            — correction log
+    POST  /api/v2/corrections            — submit a correction
+    POST  /api/v2/translate              — translate post text to English via Claude
+    POST  /api/v2/alerts/trigger/{id}    — trigger Lark alert for a high-engagement post
+    PATCH /api/v2/alerts/status/{id}     — update alert status (Acknowledged / Resolved)
 """
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -39,6 +43,13 @@ from backend.services.engagement_calculator import (
     routing_for,
     should_escalate,
 )
+from backend.services.lark_alert import (
+    format_lark_card,
+    secondary_teams_for,
+    send_alert,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v2", tags=["v2-design"])
 
@@ -114,6 +125,9 @@ def _mention_dict(
         "isNegative": post.is_negative,
         "market": post.brand.replace("atome_", "").upper() if post.brand else "PH",
         "url": post.url,
+        "alertStatus": post.alert_status or "Not triggered",
+        "alertTriggeredAt": post.alert_triggered_at.isoformat() if post.alert_triggered_at else None,
+        "secondaryTeams": secondary_teams_for(category),
     }
 
 
@@ -515,3 +529,140 @@ async def create_correction(payload: CorrectionIn, db: AsyncSession = Depends(ge
         comment=correction.comment,
         timestamp=correction.created_at,
     )
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# /translate — Claude-powered post translation
+# ────────────────────────────────────────────────────────────────────────────
+
+class TranslateIn(BaseModel):
+    text: str
+    language: str = "auto"  # ISO-639-1 hint, or "auto" for detection
+
+
+class TranslateOut(BaseModel):
+    originalText: str
+    translatedText: str
+    language: str
+
+
+@router.post("/translate", response_model=TranslateOut)
+async def translate_post(payload: TranslateIn):
+    """Translate a post to English using Claude claude-haiku-4-5."""
+    from backend.services.translator import translate_to_english
+
+    if not payload.text or not payload.text.strip():
+        raise HTTPException(422, "text must not be empty")
+    try:
+        result = await translate_to_english(payload.text, from_language=payload.language)
+        return TranslateOut(
+            originalText=payload.text,
+            translatedText=result,
+            language=payload.language,
+        )
+    except Exception as exc:
+        logger.error("Translation endpoint error: %s", exc)
+        raise HTTPException(502, f"Translation service error: {exc}") from exc
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# /alerts — Lark alert trigger + status management
+# ────────────────────────────────────────────────────────────────────────────
+
+VALID_ALERT_STATUSES = {"Not triggered", "Triggered", "Acknowledged", "Resolved"}
+
+
+class AlertStatusPatch(BaseModel):
+    status: str  # Acknowledged | Resolved
+
+
+@router.post("/alerts/trigger/{post_id}")
+async def trigger_alert(post_id: int, db: AsyncSession = Depends(get_db)):
+    """Trigger a Lark alert for a high-engagement post and update its alert_status."""
+    post = (await db.execute(select(Post).where(Post.id == post_id))).scalar_one_or_none()
+    if not post:
+        raise HTTPException(404, f"Post {post_id} not found")
+
+    settings_row = await _get_settings(db)
+    tax_by_key = await _get_taxonomy_map(db)
+
+    score = post.engagement_score or engagement_score(
+        post.engagement_likes, post.engagement_replies,
+        post.engagement_reposts, post.engagement_comments or 0,
+    )
+    level = post.engagement_level or engagement_level(score, settings_row.engagement_thresholds)
+
+    if level != LEVEL_HIGH:
+        raise HTTPException(
+            400,
+            f"Post {post_id} has engagement level '{level}' — only High-engagement posts trigger alerts.",
+        )
+
+    # Idempotency guard — don't re-send if already actioned
+    if post.alert_status in ("Triggered", "Acknowledged", "Resolved"):
+        raise HTTPException(
+            409,
+            f"Post {post_id} alert is already '{post.alert_status}'. Use PATCH /alerts/status to update.",
+        )
+
+    category = post.category
+    owner = post.primary_owner or _owner_of(tax_by_key, settings_row, category)
+    tax = tax_by_key.get(category or "")
+    cat_flag = bool(tax and tax.escalation_flag)
+    routing = routing_for(owner=owner, level=level, category_escalation_flag=cat_flag)
+    suggested_action = routing["action_label"]
+
+    sentiment = "Negative" if post.is_negative else "Positive" if post.is_negative is False else "Neutral"
+    secondary = secondary_teams_for(category)
+    category_label = tax.label if tax else (category or "Unknown").replace("_", " ").title()
+
+    payload = format_lark_card(
+        post_text=post.content_text or "",
+        platform=post.platform or "unknown",
+        category_label=category_label,
+        sentiment=sentiment,
+        engagement=score,
+        level=level,
+        primary_owner=owner,
+        secondary_teams=secondary,
+        suggested_action=suggested_action,
+        post_url=post.url,
+        translation=None,  # TODO: optionally pre-translate on trigger
+    )
+
+    sent = await send_alert(payload)
+
+    # Update post alert status
+    post.alert_status = "Triggered"
+    post.alert_triggered_at = datetime.now(tz=timezone.utc)
+    await db.commit()
+
+    return {
+        "success": True,
+        "postId": post_id,
+        "alertStatus": "Triggered",
+        "larkDelivered": sent,
+        "primaryOwner": owner,
+        "secondaryTeams": secondary,
+        "engagement": score,
+        "level": level,
+    }
+
+
+@router.patch("/alerts/status/{post_id}")
+async def update_alert_status(
+    post_id: int,
+    payload: AlertStatusPatch,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update alert status to Acknowledged or Resolved."""
+    if payload.status not in VALID_ALERT_STATUSES:
+        raise HTTPException(400, f"Invalid status '{payload.status}'. Valid: {VALID_ALERT_STATUSES}")
+
+    post = (await db.execute(select(Post).where(Post.id == post_id))).scalar_one_or_none()
+    if not post:
+        raise HTTPException(404, f"Post {post_id} not found")
+
+    post.alert_status = payload.status
+    await db.commit()
+    return {"postId": post_id, "alertStatus": payload.status}

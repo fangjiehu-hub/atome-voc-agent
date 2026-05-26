@@ -64,6 +64,11 @@ class Post(Base):
     # Override of taxonomy's primary_owner (per-mention correction).
     primary_owner: Mapped[str | None] = mapped_column(String(100))
 
+    # Alert workflow fields (added migration 005)
+    # Not triggered | Triggered | Acknowledged | Resolved
+    alert_status: Mapped[str] = mapped_column(String(30), default="Not triggered", server_default="Not triggered")
+    alert_triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # Relations
     incident_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("incidents.id"))
     is_reviewed: Mapped[bool] = mapped_column(Boolean, default=False)

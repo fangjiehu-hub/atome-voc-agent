@@ -13,7 +13,7 @@ function Sidebar({ route, navigate }) {
   const groups = [
     { label: "Monitor", items: [
       { href: "overview", label: "Overview" },
-      { href: "mentions", label: "Mentions" },
+      { href: "mentions", label: "All Posts with Filter" },
       { href: "queue",    label: "Items Needing Attention" },
     ]},
     { label: "Logic", items: [
@@ -59,7 +59,7 @@ function Sidebar({ route, navigate }) {
 
 // ---- Topbar ----------------------------------------------------------
 const PAGE_TITLES = {
-  overview: "Executive Overview", mentions: "Mentions", queue: "Items Needing Attention",
+  overview: "Executive Overview", mentions: "All Posts with Filter", queue: "Items Needing Attention",
   taxonomy: "Taxonomy", routing: "Routing Matrix", methodology: "Methodology",
   rationale: "Logic & Rationale", settings: "Settings", log: "Correction Log",
 };
@@ -113,16 +113,32 @@ const SENTIMENT_STYLES = {
   "Positive": { bg: "#ECFDF5", text: "#047857", dot: "#10B981" },
   "Negative": { bg: "#FEF2F2", text: "#991B1B", dot: "#EF4444" },
   "Neutral":  { bg: "#F3F4F6", text: "#4B5563", dot: "#9CA3AF" },
-  "Unclear":  { bg: "#F5F3FF", text: "#6D28D9", dot: "#8B5CF6" },
 };
 
 function SentimentBadge({ sentiment }) {
-  const s = SENTIMENT_STYLES[sentiment] || SENTIMENT_STYLES["Unclear"];
+  const s = SENTIMENT_STYLES[sentiment] || SENTIMENT_STYLES["Neutral"];
   return (
     <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full tracking-wide"
           style={{ backgroundColor: s.bg, color: s.text }}>
       <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: s.dot }}></span>
-      {sentiment || "Unclear"}
+      {sentiment || "Neutral"}
+    </span>
+  );
+}
+
+const ALERT_STATUS_STYLES = {
+  "Not triggered":  { bg: "#F3F4F6", text: "#6B7280" },
+  "Triggered":      { bg: "#FEF3C7", text: "#92400E" },
+  "Acknowledged":   { bg: "#DBEAFE", text: "#1E40AF" },
+  "Resolved":       { bg: "#D1FAE5", text: "#065F46" },
+};
+
+function AlertStatusBadge({ status }) {
+  const s = ALERT_STATUS_STYLES[status] || ALERT_STATUS_STYLES["Not triggered"];
+  return (
+    <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap"
+          style={{ backgroundColor: s.bg, color: s.text }}>
+      🔔 {status || "Not triggered"}
     </span>
   );
 }
@@ -283,8 +299,8 @@ function FilterSelect({ label, value, onChange, options }) {
 // ---- Export ----------------------------------------------------------
 Object.assign(window, {
   Sidebar, Topbar, DataFreshnessBanner,
-  EngagementBadge, SentimentBadge, StatusPill, ActionPill, EscalationFlag, OwnerPill, CategoryTag, PlatformPill,
+  EngagementBadge, SentimentBadge, AlertStatusBadge, StatusPill, ActionPill, EscalationFlag, OwnerPill, CategoryTag, PlatformPill,
   WhyRoutedHere, KPICard, PageHeader, FilterSelect,
-  LEVEL_STYLES, SENTIMENT_STYLES, ACTION_STYLES, STATUS_STYLES, PAGE_TITLES,
+  LEVEL_STYLES, SENTIMENT_STYLES, ALERT_STATUS_STYLES, ACTION_STYLES, STATUS_STYLES, PAGE_TITLES,
   cardCls, sectionTitleCls, sectionSubCls,
 });

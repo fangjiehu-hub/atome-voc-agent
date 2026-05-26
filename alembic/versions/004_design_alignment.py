@@ -75,7 +75,7 @@ TAXONOMY_SEED = [
 
 DEFAULT_OWNERSHIP = {row[0]: row[2] for row in TAXONOMY_SEED}
 DEFAULT_SENSITIVE_KEYWORDS = ["fraud", "unauthorized", "scam", "phishing", "regulator", "BSP"]
-DEFAULT_THRESHOLDS = {"lowMax": 20, "mediumMax": 100}
+DEFAULT_THRESHOLDS = {"lowMax": 20, "mediumMax": 60}
 
 
 def upgrade() -> None:

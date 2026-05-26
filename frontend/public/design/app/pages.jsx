@@ -105,7 +105,7 @@ function OverviewPage({ settings, openDrillDown, openCorrection, navigate }) {
   const sentDist = [
     { label: "Positive", count: positiveCnt, pct: Math.round(100 * positiveCnt / sentTotal), color: "#10B981" },
     { label: "Negative", count: negativeCnt, pct: Math.round(100 * negativeCnt / sentTotal), color: "#EF4444" },
-    { label: "Unclear",  count: unclearCnt,  pct: Math.round(100 * unclearCnt  / sentTotal), color: "#8B5CF6" },
+    { label: "Neutral",  count: unclearCnt,  pct: Math.round(100 * unclearCnt  / sentTotal), color: "#9CA3AF" },
   ];
 
   // Trend SVG
@@ -250,18 +250,16 @@ function OverviewPage({ settings, openDrillDown, openCorrection, navigate }) {
           <div className="flex flex-col gap-1.5">
             {cats.slice(0, 8).map((c) => {
               const tax = VoC.taxonomyFor(c.category);
-              const owner = VoC.ownerOf(c.category, settings);
               const maxCount = cats[0].count;
               const pct = (c.count / maxCount) * 100;
               return (
                 <button key={c.category} onClick={() => openDrillDown({ kind: "category", value: c.category })}
-                        className="grid grid-cols-[160px_1fr_28px_100px] items-center gap-2 py-1.5 px-1 rounded hover:bg-gray-50 text-left">
+                        className="grid grid-cols-[160px_1fr_28px] items-center gap-2 py-1.5 px-1 rounded hover:bg-gray-50 text-left">
                   <div className="text-[13px] text-gray-700 truncate">{tax ? tax.label : c.category}</div>
                   <div className="bg-gray-100 rounded h-2 overflow-hidden">
                     <div className="h-full rounded" style={{ width: pct + "%", background: "#141c30" }}></div>
                   </div>
                   <div className="text-right font-semibold text-gray-800 text-[12px]">{c.count}</div>
-                  <div><OwnerPill owner={owner} /></div>
                 </button>
               );
             })}
@@ -296,20 +294,23 @@ function OverviewPage({ settings, openDrillDown, openCorrection, navigate }) {
 }
 
 // =========================================================
-//  MENTIONS
+//  ALL POSTS WITH FILTER
 // =========================================================
 function MentionsPage({ settings, openCorrection }) {
-  const [filterCat, setFilterCat] = useP("all");
-  const [filterLevel, setFilterLevel] = useP("all");
+  const [filterCat, setFilterCat]           = useP("all");
+  const [filterLevel, setFilterLevel]       = useP("all");
   const [filterSentiment, setFilterSentiment] = useP("all");
-  const [filterPlat, setFilterPlat] = useP("all");
-  const [filterStatus, setFilterStatus] = useP("all");
+  const [filterPlat, setFilterPlat]         = useP("all");
+  const [filterStatus, setFilterStatus]     = useP("all");
+  const [filterAlert, setFilterAlert]       = useP("all");
 
+  // Show ALL collected posts by default — no pre-filtering
   const filtered = VoC.MENTIONS.map((m) => VoC.viewMention(m, settings)).filter((m) => {
     if (filterCat !== "all" && m.category !== filterCat) return false;
     if (filterPlat !== "all" && m.platform !== filterPlat) return false;
     if (filterStatus !== "all" && m.status !== filterStatus) return false;
     if (filterSentiment !== "all" && VoC.sentimentOf(m) !== filterSentiment) return false;
+    if (filterAlert !== "all" && (m.alertStatus || "Not triggered") !== filterAlert) return false;
     if (filterLevel !== "all") {
       const lv = VoC.engagementLevel(VoC.engagementOf(m), settings.engagementThresholds);
       if (lv !== filterLevel) return false;
@@ -320,27 +321,30 @@ function MentionsPage({ settings, openCorrection }) {
   return (
     <div>
       <DataFreshnessBanner settings={settings} />
-      <PageHeader title="Mentions" subtitle={`${filtered.length} of ${VoC.MENTIONS.length} mentions · sorted by engagement.`} />
+      <PageHeader title="All Posts with Filter"
+                  subtitle={`${filtered.length} of ${VoC.MENTIONS.length} posts collected · sorted by engagement`} />
 
       <div className={cardCls + " p-4 mb-4 flex flex-wrap gap-2.5 items-center"}>
         <span className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold mr-1">Filter</span>
         <FilterSelect label="Category" value={filterCat} onChange={setFilterCat}
           options={[{ v: "all", l: "All categories" }, ...VoC.TAXONOMY.map((t) => ({ v: t.key, l: t.label }))]} />
         <FilterSelect label="Sentiment" value={filterSentiment} onChange={setFilterSentiment}
-          options={[{ v: "all", l: "All sentiment" }, { v: "Positive", l: "Positive" }, { v: "Negative", l: "Negative" }, { v: "Unclear", l: "Unclear" }]} />
+          options={[{ v: "all", l: "All sentiment" }, { v: "Positive", l: "Positive" }, { v: "Negative", l: "Negative" }, { v: "Neutral", l: "Neutral" }]} />
         <FilterSelect label="Engagement" value={filterLevel} onChange={setFilterLevel}
           options={[{ v: "all", l: "All levels" }, { v: "High", l: "High" }, { v: "Medium", l: "Medium" }, { v: "Low", l: "Low" }]} />
         <FilterSelect label="Source" value={filterPlat} onChange={setFilterPlat}
           options={[{ v: "all", l: "All sources" }, { v: "twitter", l: "X / Twitter" }, { v: "reddit", l: "Reddit" }]} />
         <FilterSelect label="Status" value={filterStatus} onChange={setFilterStatus}
-          options={[{ v: "all", l: "All" }, { v: "New", l: "New" }, { v: "In Review", l: "In Review" }, { v: "Actioned", l: "Actioned" }, { v: "Closed", l: "Closed" }, { v: "Not Relevant", l: "Not Relevant" }]} />
+          options={[{ v: "all", l: "All" }, { v: "New", l: "New" }, { v: "In Review", l: "In Review" }, { v: "Actioned", l: "Actioned" }, { v: "Closed", l: "Closed" }, { v: "Rejected", l: "Rejected" }, { v: "Not Relevant", l: "Not Relevant" }, { v: "Duplicate", l: "Duplicate" }]} />
+        <FilterSelect label="Alert" value={filterAlert} onChange={setFilterAlert}
+          options={[{ v: "all", l: "All alerts" }, { v: "Not triggered", l: "Not triggered" }, { v: "Triggered", l: "Triggered" }, { v: "Acknowledged", l: "Acknowledged" }, { v: "Resolved", l: "Resolved" }]} />
         <div className="flex-1" />
         <div className="text-[11.5px] text-gray-500">Sorted by engagement</div>
       </div>
 
       <div className="flex flex-col gap-2">
         {filtered.map((m) => <MentionCard key={m.id} mention={m} settings={settings} onCorrect={openCorrection} />)}
-        {filtered.length === 0 && <div className="text-center text-gray-400 text-sm py-8">No mentions match these filters.</div>}
+        {filtered.length === 0 && <div className="text-center text-gray-400 text-sm py-8">No posts match these filters.</div>}
       </div>
     </div>
   );
@@ -447,7 +451,7 @@ function ActionQueuePage({ settings, openDrillDown, openCorrection }) {
             <tbody>
               {clusterView.map(({ clusterId, topic, category, rows, totalEng }) => {
                 const lv = VoC.engagementLevel(totalEng, settings.engagementThresholds);
-                const sent = rows[0] ? VoC.sentimentOf(rows[0].m) : "Unclear";
+                const sent = rows[0] ? VoC.sentimentOf(rows[0].m) : "Neutral";
                 const routing = rows[0] ? rows[0].routing : { owner: "—", action: "—", actionType: "Monitor", escalation: false };
                 const reason = rows[0] ? rows[0].reason : "—";
                 return (
@@ -592,7 +596,7 @@ function TaxonomyPage({ settings, updateSettings }) {
 }
 
 // =========================================================
-//  ROUTING MATRIX — derived from Taxonomy ownership × engagement
+//  ROUTING MATRIX — Category / Primary / Secondary only
 // =========================================================
 function RoutingMatrixPage({ settings }) {
   return (
@@ -600,7 +604,7 @@ function RoutingMatrixPage({ settings }) {
       <DataFreshnessBanner settings={settings} />
       <PageHeader
         title="Routing Matrix"
-        subtitle="Generated from Taxonomy × engagement level. Edit owners in Taxonomy; edit thresholds in Settings."
+        subtitle="Which team owns each category and who they loop in. Edit owners in Taxonomy."
       />
 
       <div className={cardCls + " p-4 mb-4 text-[12.5px] text-gray-700 bg-gradient-to-r from-brand-50/50 to-white flex items-start gap-3"}>
@@ -608,66 +612,38 @@ function RoutingMatrixPage({ settings }) {
           <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <div>
-          <div className="font-bold text-brand-500 mb-0.5">One owner per category. Escalation is a separate flag.</div>
-          The Routing Matrix is generated from Taxonomy and Engagement Settings to avoid inconsistent ownership rules. We don't mix escalation owner into the primary owner field.
-          <div className="mt-1 text-[11.5px] text-gray-500">
-            Current thresholds: Low ≤ {settings.engagementThresholds.lowMax} · Medium ≤ {settings.engagementThresholds.mediumMax} · High &gt; {settings.engagementThresholds.mediumMax}
-          </div>
+          <div className="font-bold text-brand-500 mb-0.5">One Primary Owner per category. Secondary teams are CC'd on High-engagement alerts.</div>
+          High-engagement posts (engagement &gt; {settings.engagementThresholds.mediumMax}) trigger a Lark alert to the Primary Owner. Secondary teams are notified via CC for awareness.
         </div>
       </div>
 
-      <div className={cardCls + " overflow-hidden mb-4"}>
+      <div className={cardCls + " overflow-hidden"}>
         <table className="w-full border-collapse text-[13px]">
           <thead>
             <tr>
               <th className="text-left text-[10.5px] uppercase tracking-wider text-gray-500 font-semibold px-3 py-2 border-b border-gray-200 bg-gray-50">Category</th>
               <th className="text-left text-[10.5px] uppercase tracking-wider text-gray-500 font-semibold px-3 py-2 border-b border-gray-200 bg-gray-50">Primary Owner</th>
-              <th className="text-left text-[10.5px] uppercase tracking-wider text-gray-500 font-semibold px-3 py-2 border-b border-gray-200" style={{ background: "#ECFDF5" }}>Low engagement</th>
-              <th className="text-left text-[10.5px] uppercase tracking-wider text-gray-500 font-semibold px-3 py-2 border-b border-gray-200" style={{ background: "#FEF3C7" }}>Medium engagement</th>
-              <th className="text-left text-[10.5px] uppercase tracking-wider text-gray-500 font-semibold px-3 py-2 border-b border-gray-200" style={{ background: "#FEE2E2" }}>High engagement</th>
-              <th className="text-left text-[10.5px] uppercase tracking-wider text-gray-500 font-semibold px-3 py-2 border-b border-gray-200 bg-gray-50">Escalation flag</th>
+              <th className="text-left text-[10.5px] uppercase tracking-wider text-gray-500 font-semibold px-3 py-2 border-b border-gray-200 bg-gray-50">Secondary Teams (CC)</th>
             </tr>
           </thead>
           <tbody>
             {VoC.TAXONOMY.map((t) => {
               const owner = VoC.ownerOf(t.key, settings);
-              const rLow = VoC.routingFor(t.key, "Low",    false, settings);
-              const rMed = VoC.routingFor(t.key, "Medium", false, settings);
-              const rHi  = VoC.routingFor(t.key, "High",   false, settings);
+              const secondary = VoC.secondaryTeamsOf(t.key);
               return (
-                <tr key={t.key} className="align-top">
+                <tr key={t.key} className="align-middle hover:bg-gray-50/50">
                   <td className="px-3 py-3 border-b border-gray-100 font-semibold text-gray-900 whitespace-nowrap">{t.label}</td>
                   <td className="px-3 py-3 border-b border-gray-100"><OwnerPill owner={owner} /></td>
-                  <td className="px-3 py-3 border-b border-gray-100"><ActionPill label={rLow.action} actionType={rLow.actionType} /></td>
-                  <td className="px-3 py-3 border-b border-gray-100"><ActionPill label={rMed.action} actionType={rMed.actionType} /></td>
-                  <td className="px-3 py-3 border-b border-gray-100"><ActionPill label={rHi.action}  actionType={rHi.actionType}  /></td>
                   <td className="px-3 py-3 border-b border-gray-100">
-                    {t.escalationFlag
-                      ? <span className="text-[11px] font-bold text-coral">Yes — always</span>
-                      : <span className="text-[11px] text-gray-500">Only at high engagement</span>}
+                    {secondary.length > 0
+                      ? <div className="flex flex-wrap gap-1">{secondary.map((s) => <span key={s} className="inline-block bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full text-[11px] font-semibold">{s}</span>)}</div>
+                      : <span className="text-[11px] text-gray-400">—</span>}
                   </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
-      </div>
-
-      <div className="grid grid-cols-3 gap-3.5">
-        {[...new Set(Object.values(settings.ownership))].map((o) => {
-          const cats = VoC.TAXONOMY.filter((t) => VoC.ownerOf(t.key, settings) === o);
-          return (
-            <div key={o} className={cardCls + " p-4"}>
-              <div className="flex items-center gap-2 mb-2">
-                <OwnerPill owner={o} />
-                <span className="text-[11px] text-gray-500">owns {cats.length}</span>
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {cats.map((c) => <CategoryTag key={c.key} category={c.key} />)}
-              </div>
-            </div>
-          );
-        })}
       </div>
     </div>
   );
@@ -720,8 +696,7 @@ function MethodologyPage({ settings }) {
           {[
             { s: "Positive", desc: "Post expresses satisfaction, compliment, or positive experience with Atome." },
             { s: "Negative", desc: "Post expresses complaint, frustration, or negative experience — often action-relevant." },
-            { s: "Neutral",  desc: "Factual or informational post with no clear emotional signal." },
-            { s: "Unclear",  desc: "Sentiment could not be confidently determined (mixed, ironic, or insufficient context)." },
+            { s: "Neutral",  desc: "Factual, informational, or mixed-signal post with no clear positive or negative emotion. Also used when sentiment could not be determined confidently." },
           ].map(({ s, desc }) => (
             <div key={s} className="flex gap-2.5 items-start">
               <SentimentBadge sentiment={s} />
@@ -730,7 +705,7 @@ function MethodologyPage({ settings }) {
           ))}
         </div>
         <div className="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-3 text-[12px] text-gray-600">
-          <strong>AI confidence:</strong> The model is most confident on clearly negative complaints. Mixed-language posts (Filipino/Taglish) may be classified as Unclear more often.
+          <strong>AI confidence:</strong> The model is most confident on clearly negative complaints. Mixed-language posts (Filipino/Taglish) may be classified as Neutral more often due to lower confidence.
         </div>
       </div>
 
@@ -784,7 +759,7 @@ function RationalePage() {
     },
     {
       t: "Sentiment is a reading aid, not a classification system.",
-      b: "Positive/Negative/Unclear labels help reviewers prioritize quickly. They are AI-generated and can be wrong — especially for sarcasm, short posts, or mixed-language (Taglish). Corrections are lightweight and encouraged.",
+      b: "Positive/Negative/Neutral labels help reviewers prioritize quickly. They are AI-generated and can be wrong — especially for sarcasm, short posts, or mixed-language (Taglish). Corrections are lightweight and encouraged.",
     },
     {
       t: "Items Needing Attention is a filtered signal, not a work queue.",
@@ -1002,13 +977,13 @@ function CorrectionLogPage({ settings, log, clearLog }) {
                     <td className="px-2.5 py-3 border-b border-gray-100 text-[12px] font-semibold text-gray-700 whitespace-nowrap">{labelOf[e.correctionType] || e.correctionType}</td>
                     <td className="px-2.5 py-3 border-b border-gray-100">
                       {e.correctionType === "owner" ? <OwnerPill owner={e.originalOwner} />
-                        : e.correctionType === "sentiment" ? <SentimentBadge sentiment={e.originalSentiment || "Unclear"} />
+                        : e.correctionType === "sentiment" ? <SentimentBadge sentiment={e.originalSentiment || "Neutral"} />
                         : tax && <CategoryTag category={tax.key} />}
                     </td>
                     <td className="px-2.5 py-3 border-b border-gray-100 text-gray-400">→</td>
                     <td className="px-2.5 py-3 border-b border-gray-100">
                       {e.correctionType === "category" && newTax && <CategoryTag category={newTax.key} />}
-                      {e.correctionType === "sentiment" && <SentimentBadge sentiment={e.correctedSentiment || "Unclear"} />}
+                      {e.correctionType === "sentiment" && <SentimentBadge sentiment={e.correctedSentiment || "Neutral"} />}
                       {e.correctionType === "owner" && <OwnerPill owner={e.correctedOwner} />}
                       {e.correctionType === "not_relevant" && <StatusPill status="Not Relevant" />}
                       {e.correctionType === "duplicate" && <StatusPill status="Duplicate" />}
