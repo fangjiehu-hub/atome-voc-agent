@@ -613,7 +613,7 @@ function RoutingMatrixPage({ settings }) {
         </svg>
         <div>
           <div className="font-bold text-brand-500 mb-0.5">One Primary Owner per category. Secondary teams are CC'd on High-engagement alerts.</div>
-          High-engagement posts (engagement &gt; {settings.engagementThresholds.mediumMax}) trigger a Lark alert to the Primary Owner. Secondary teams are notified via CC for awareness.
+          High-engagement posts (engagement &gt; {settings.engagementThresholds.mediumMax}) send a Lark card to the <strong>shared group channel</strong> configured via <code>LARK_ALERT_WEBHOOK_URL</code>. The card shows the Primary Owner and CC teams as metadata — it is a group notification, not a personal DM to the owner.
         </div>
       </div>
 
