@@ -49,7 +49,7 @@
     return "Neutral";
   }
 
-  // ─── secondary teams mapping (mirrors lark_alert.py SECONDARY_TEAMS) ──
+  // ─── secondary teams mapping — default fallback; overridden by settings.secondaryOwnership ──
   const SECONDARY_TEAMS_MAP = {
     "collections":       ["Risk"],
     "customer_service":  ["Product"],
@@ -65,7 +65,16 @@
     "user_review":       ["Customer Services"],
     "fraud":             ["Legal", "Collection"],
   };
-  function secondaryTeamsOf(categoryKey) {
+
+  // Available options for multi-select display defaults
+  const MARKET_OPTIONS = ["PH", "ID", "MY", "SG", "TW"];
+  const SOURCE_OPTIONS = ["X", "Reddit", "Facebook", "TikTok"];
+
+  // Prefer settings.secondaryOwnership (user-configured) → fall back to static map
+  function secondaryTeamsOf(categoryKey, settings) {
+    if (settings && settings.secondaryOwnership && settings.secondaryOwnership[categoryKey] !== undefined) {
+      return settings.secondaryOwnership[categoryKey] || [];
+    }
     return SECONDARY_TEAMS_MAP[categoryKey] || [];
   }
   function routingFor(categoryKey, level, sensitive, settings) {
@@ -139,9 +148,18 @@
       engagementThresholds: SERVER_SETTINGS ? SERVER_SETTINGS.engagementThresholds : { lowMax: 20, mediumMax: 60 },
       sensitiveKeywords:    SERVER_SETTINGS ? SERVER_SETTINGS.sensitiveKeywords    : ["fraud", "unauthorized", "scam", "phishing", "regulator", "BSP"],
       ownership:            SERVER_SETTINGS ? { ...SERVER_SETTINGS.ownership }     : { ...DEFAULT_OWNERSHIP },
+      // secondaryOwnership: settings-controlled CC teams per category; defaults to static map
+      secondaryOwnership:   SERVER_SETTINGS && SERVER_SETTINGS.secondaryOwnership
+                              ? { ...SERVER_SETTINGS.secondaryOwnership }
+                              : JSON.parse(JSON.stringify(SECONDARY_TEAMS_MAP)),
       mentionOverrides:     {},
-      defaultMarket:        SERVER_SETTINGS ? SERVER_SETTINGS.defaultMarket        : "PH",
-      defaultSource:        SERVER_SETTINGS ? SERVER_SETTINGS.defaultSource        : "X + Reddit",
+      // defaultMarket / defaultSource are arrays (multi-select)
+      defaultMarket:        SERVER_SETTINGS
+                              ? (Array.isArray(SERVER_SETTINGS.defaultMarket) ? SERVER_SETTINGS.defaultMarket : ["PH"])
+                              : ["PH"],
+      defaultSource:        SERVER_SETTINGS
+                              ? (Array.isArray(SERVER_SETTINGS.defaultSource) ? SERVER_SETTINGS.defaultSource : ["X", "Reddit"])
+                              : ["X", "Reddit"],
       defaultTimeWindow:    SERVER_SETTINGS ? SERVER_SETTINGS.defaultTimeWindow    : "7d",
     };
   }
@@ -152,11 +170,19 @@
       const raw = localStorage.getItem(SETTINGS_KEY);
       if (!raw) return base;
       const parsed = JSON.parse(raw);
+      // Coerce legacy string market/source to arrays
+      const market = Array.isArray(parsed.defaultMarket) ? parsed.defaultMarket
+        : (parsed.defaultMarket ? [parsed.defaultMarket] : base.defaultMarket);
+      const source = Array.isArray(parsed.defaultSource) ? parsed.defaultSource
+        : (parsed.defaultSource ? parsed.defaultSource.split("+").map((s) => s.trim()).filter(Boolean) : base.defaultSource);
       return {
         ...base, ...parsed,
         engagementThresholds: { ...base.engagementThresholds, ...(parsed.engagementThresholds || {}) },
         ownership: { ...base.ownership, ...(parsed.ownership || {}) },
+        secondaryOwnership: { ...base.secondaryOwnership, ...(parsed.secondaryOwnership || {}) },
         mentionOverrides: parsed.mentionOverrides || {},
+        defaultMarket: market,
+        defaultSource: source,
       };
     } catch (e) { return base; }
   }
@@ -170,6 +196,7 @@
         engagementThresholds: s.engagementThresholds,
         sensitiveKeywords: s.sensitiveKeywords,
         ownership: s.ownership,
+        secondaryOwnership: s.secondaryOwnership,
         defaultMarket: s.defaultMarket,
         defaultSource: s.defaultSource,
         defaultTimeWindow: s.defaultTimeWindow,
@@ -304,7 +331,7 @@
     engagementOf, engagementLevel, taxonomyFor, ownerOf,
     isSensitive, sentimentOf, secondaryTeamsOf, routingFor, viewMention, effectiveCategory,
     listClusters, dataFreshness,
-    SECONDARY_TEAMS_MAP,
+    SECONDARY_TEAMS_MAP, MARKET_OPTIONS, SOURCE_OPTIONS,
   };
 
   // Kick off fetch and signal when done. app.jsx listens for this.

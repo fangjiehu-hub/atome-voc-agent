@@ -2,7 +2,7 @@
 // Atome VoC — pages (v3 · monitoring-first)
 // =============================================================
 
-const { useState: useP, useMemo: useM } = React;
+const { useState: useP, useMemo: useM, useEffect: useE } = React;
 
 function levelCountsFor(mentions, thresholds) {
   let low = 0, medium = 0, high = 0;
@@ -537,57 +537,58 @@ function ActionQueuePage({ settings, openDrillDown, openCorrection }) {
 }
 
 // =========================================================
-//  TAXONOMY
+//  TAXONOMY — read-only derived view; edit owners in Settings
 // =========================================================
-function TaxonomyPage({ settings, updateSettings }) {
-  const owners = [...new Set(Object.values(VoC.DEFAULT_OWNERSHIP))];
-
-  function setOwner(catKey, owner) {
-    updateSettings({ ...settings, ownership: { ...settings.ownership, [catKey]: owner } });
-  }
-
+function TaxonomyPage({ settings }) {
   return (
     <div>
       <DataFreshnessBanner settings={settings} />
-      <PageHeader title="Taxonomy" subtitle="The single source of truth for category ownership. The Routing Matrix follows this table — no separate owner mapping." />
+      <PageHeader title="Taxonomy" subtitle="Category definitions, ownership, and escalation policy. This is a read-only view — configure owners in Settings → Routing Ownership." />
 
       <div className={cardCls + " p-4 mb-4 text-[12.5px] text-gray-700 bg-gradient-to-r from-brand-50/50 to-white"}>
-        <span className="font-bold text-brand-500">One category = one primary owner. </span>
-        Change a category's owner here and it flows everywhere — Routing Matrix, Action Queue, Why-routed explanations.
+        <span className="font-bold text-brand-500">Read-only view. </span>
+        To change a category's Primary Owner or Secondary CC teams, go to{" "}
+        <a href="#/settings" className="text-coral underline">Settings → Routing Ownership</a>.
+        Changes flow instantly to the Routing Matrix and every Why-routed explanation.
       </div>
 
       <div className={cardCls + " overflow-hidden"}>
         <table className="w-full border-collapse text-[13px]">
           <thead>
             <tr>
-              {["Category", "Primary Owner", "Description", "Common signals", "Default action", "Escalation flag", "Escalation note"].map((h) => (
+              {["Category", "Primary Owner", "Secondary Teams (CC)", "Description", "Common signals", "Default action", "Escalation flag", "Escalation note"].map((h) => (
                 <th key={h} className="text-left text-[10.5px] uppercase tracking-wider text-gray-500 font-semibold px-3 py-2 border-b border-gray-200 bg-gray-50 align-top">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {VoC.TAXONOMY.map((t) => (
-              <tr key={t.key} className="align-top hover:bg-gray-50/50">
-                <td className="px-3 py-3 border-b border-gray-100 font-semibold text-gray-900 whitespace-nowrap">{t.label}</td>
-                <td className="px-3 py-3 border-b border-gray-100">
-                  <select value={VoC.ownerOf(t.key, settings)} onChange={(e) => setOwner(t.key, e.target.value)}
-                          className="bg-[#f0ff5f]/30 text-brand-500 px-2 py-0.5 rounded-full text-[11px] font-semibold border-0 focus:outline-none">
-                    {owners.map((o) => <option key={o} value={o}>{o}</option>)}
-                  </select>
-                </td>
-                <td className="px-3 py-3 border-b border-gray-100 text-gray-700 max-w-[240px]">{t.description}</td>
-                <td className="px-3 py-3 border-b border-gray-100">
-                  <div className="flex flex-wrap gap-1">
-                    {t.signals.map((s) => <span key={s} className="bg-gray-100 text-gray-700 text-[11px] px-1.5 py-0.5 rounded">{s}</span>)}
-                  </div>
-                </td>
-                <td className="px-3 py-3 border-b border-gray-100 text-gray-700 whitespace-nowrap">{t.defaultAction}</td>
-                <td className="px-3 py-3 border-b border-gray-100">
-                  {t.escalationFlag ? <span className="text-[11px] font-bold text-coral">Yes</span> : <span className="text-[11px] text-gray-400">No</span>}
-                </td>
-                <td className="px-3 py-3 border-b border-gray-100 text-gray-600 text-[12px] max-w-[220px]">{t.escalationNote}</td>
-              </tr>
-            ))}
+            {VoC.TAXONOMY.map((t) => {
+              const secondary = VoC.secondaryTeamsOf(t.key, settings);
+              return (
+                <tr key={t.key} className="align-top hover:bg-gray-50/50">
+                  <td className="px-3 py-3 border-b border-gray-100 font-semibold text-gray-900 whitespace-nowrap">{t.label}</td>
+                  <td className="px-3 py-3 border-b border-gray-100">
+                    <OwnerPill owner={VoC.ownerOf(t.key, settings)} />
+                  </td>
+                  <td className="px-3 py-3 border-b border-gray-100">
+                    {secondary.length > 0
+                      ? <div className="flex flex-wrap gap-1">{secondary.map((s) => <span key={s} className="inline-block bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full text-[11px] font-semibold">{s}</span>)}</div>
+                      : <span className="text-[11px] text-gray-400">—</span>}
+                  </td>
+                  <td className="px-3 py-3 border-b border-gray-100 text-gray-700 max-w-[240px]">{t.description}</td>
+                  <td className="px-3 py-3 border-b border-gray-100">
+                    <div className="flex flex-wrap gap-1">
+                      {t.signals.map((s) => <span key={s} className="bg-gray-100 text-gray-700 text-[11px] px-1.5 py-0.5 rounded">{s}</span>)}
+                    </div>
+                  </td>
+                  <td className="px-3 py-3 border-b border-gray-100 text-gray-700 whitespace-nowrap">{t.defaultAction}</td>
+                  <td className="px-3 py-3 border-b border-gray-100">
+                    {t.escalationFlag ? <span className="text-[11px] font-bold text-coral">Yes</span> : <span className="text-[11px] text-gray-400">No</span>}
+                  </td>
+                  <td className="px-3 py-3 border-b border-gray-100 text-gray-600 text-[12px] max-w-[220px]">{t.escalationNote}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -604,7 +605,7 @@ function RoutingMatrixPage({ settings }) {
       <DataFreshnessBanner settings={settings} />
       <PageHeader
         title="Routing Matrix"
-        subtitle="Which team owns each category and who they loop in. Edit owners in Taxonomy."
+        subtitle="Which team owns each category and who they loop in. Edit owners and CC teams in Settings → Routing Ownership."
       />
 
       <div className={cardCls + " p-4 mb-4 text-[12.5px] text-gray-700 bg-gradient-to-r from-brand-50/50 to-white flex items-start gap-3"}>
@@ -629,7 +630,7 @@ function RoutingMatrixPage({ settings }) {
           <tbody>
             {VoC.TAXONOMY.map((t) => {
               const owner = VoC.ownerOf(t.key, settings);
-              const secondary = VoC.secondaryTeamsOf(t.key);
+              const secondary = VoC.secondaryTeamsOf(t.key, settings);
               return (
                 <tr key={t.key} className="align-middle hover:bg-gray-50/50">
                   <td className="px-3 py-3 border-b border-gray-100 font-semibold text-gray-900 whitespace-nowrap">{t.label}</td>
@@ -790,66 +791,143 @@ function RationalePage() {
 }
 
 // =========================================================
-//  SETTINGS — engagement thresholds + taxonomy ownership + display
+//  SETTINGS — single source of truth (draft/confirm workflow)
 // =========================================================
 function SettingsPage({ settings, updateSettings, resetSettings }) {
-  const [draftLow, setDraftLow]   = useP(settings.engagementThresholds.lowMax);
-  const [draftMed, setDraftMed]   = useP(settings.engagementThresholds.mediumMax);
-  const [draftKW, setDraftKW]     = useP(settings.sensitiveKeywords.join(", "));
-  const [draftMarket, setMarket]  = useP(settings.defaultMarket);
-  const [draftSource, setSource]  = useP(settings.defaultSource);
-  const [draftWindow, setWindow]  = useP(settings.defaultTimeWindow);
+  // Build initial draft from current committed settings
+  function makeDraft(s) {
+    return {
+      low:               s.engagementThresholds.lowMax,
+      med:               s.engagementThresholds.mediumMax,
+      keywords:          s.sensitiveKeywords.join(", "),
+      ownership:         { ...s.ownership },
+      secondaryOwnership: JSON.parse(JSON.stringify(s.secondaryOwnership || {})),
+      defaultMarket:     [...(Array.isArray(s.defaultMarket) ? s.defaultMarket : [s.defaultMarket || "PH"])],
+      defaultSource:     [...(Array.isArray(s.defaultSource) ? s.defaultSource : [s.defaultSource || "X"])],
+      defaultTimeWindow: s.defaultTimeWindow,
+    };
+  }
+
+  const [draft, setDraft] = useP(() => makeDraft(settings));
   const [error, setError] = useP(null);
 
-  function save() {
-    const lo = Number(draftLow), md = Number(draftMed);
+  // Detect unsaved changes by comparing draft to committed settings
+  const hasUnsaved = useM(() => {
+    if (Number(draft.low) !== settings.engagementThresholds.lowMax) return true;
+    if (Number(draft.med) !== settings.engagementThresholds.mediumMax) return true;
+    const parsedKW = draft.keywords.split(",").map((s) => s.trim()).filter(Boolean);
+    if (JSON.stringify(parsedKW) !== JSON.stringify(settings.sensitiveKeywords)) return true;
+    if (JSON.stringify(draft.ownership) !== JSON.stringify(settings.ownership)) return true;
+    if (JSON.stringify(draft.secondaryOwnership) !== JSON.stringify(settings.secondaryOwnership || {})) return true;
+    const mkt = Array.isArray(settings.defaultMarket) ? settings.defaultMarket : [settings.defaultMarket];
+    if (JSON.stringify([...draft.defaultMarket].sort()) !== JSON.stringify([...mkt].sort())) return true;
+    const src = Array.isArray(settings.defaultSource) ? settings.defaultSource : [settings.defaultSource];
+    if (JSON.stringify([...draft.defaultSource].sort()) !== JSON.stringify([...src].sort())) return true;
+    if (draft.defaultTimeWindow !== settings.defaultTimeWindow) return true;
+    return false;
+  }, [draft, settings]);
+
+  // Warn before page leave when there are unconfirmed changes
+  useE(() => {
+    if (!hasUnsaved) return;
+    const handler = (e) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [hasUnsaved]);
+
+  function confirm() {
+    const lo = Number(draft.low), md = Number(draft.med);
     if (!Number.isFinite(lo) || lo < 0) return setError("Low max must be a number ≥ 0.");
     if (!Number.isFinite(md) || md <= lo) return setError("Medium max must be greater than Low max.");
     setError(null);
-    updateSettings({
+    const newSettings = {
       ...settings,
       engagementThresholds: { lowMax: lo, mediumMax: md },
-      sensitiveKeywords: draftKW.split(",").map((s) => s.trim()).filter(Boolean),
-      defaultMarket: draftMarket, defaultSource: draftSource, defaultTimeWindow: draftWindow,
-    });
+      sensitiveKeywords: draft.keywords.split(",").map((s) => s.trim()).filter(Boolean),
+      ownership: { ...draft.ownership },
+      secondaryOwnership: JSON.parse(JSON.stringify(draft.secondaryOwnership)),
+      defaultMarket: draft.defaultMarket,
+      defaultSource: draft.defaultSource,
+      defaultTimeWindow: draft.defaultTimeWindow,
+    };
+    updateSettings(newSettings);
+    // Reset draft to match committed state → hasUnsaved → false
+    setDraft(makeDraft(newSettings));
   }
 
-  function reset() {
-    const d = VoC.DEFAULT_SETTINGS;
-    setDraftLow(d.engagementThresholds.lowMax);
-    setDraftMed(d.engagementThresholds.mediumMax);
-    setDraftKW(d.sensitiveKeywords.join(", "));
-    setMarket(d.defaultMarket); setSource(d.defaultSource); setWindow(d.defaultTimeWindow);
+  function discard() {
+    setDraft(makeDraft(settings));
+    setError(null);
+  }
+
+  function doReset() {
     resetSettings();
+    const d = VoC.DEFAULT_SETTINGS;
+    setDraft(makeDraft(d));
+    setError(null);
   }
 
-  function setOwner(catKey, owner) {
-    updateSettings({ ...settings, ownership: { ...settings.ownership, [catKey]: owner } });
-  }
-
-  const draftThresholds = { lowMax: Number(draftLow), mediumMax: Number(draftMed) };
+  // Live preview of threshold impact on mentions
+  const draftThresholds = { lowMax: Number(draft.low), mediumMax: Number(draft.med) };
   const previewCounts = Number.isFinite(draftThresholds.lowMax) && Number.isFinite(draftThresholds.mediumMax) && draftThresholds.mediumMax > draftThresholds.lowMax
     ? levelCountsFor(VoC.MENTIONS, draftThresholds) : null;
 
   const owners = [...new Set(Object.values(VoC.DEFAULT_OWNERSHIP))];
+  const allSecondaryOptions = ["Risk", "Product", "Legal", "Customer Services", "Collection"];
+  const marketOptions = VoC.MARKET_OPTIONS || ["PH", "ID", "MY", "SG", "TW"];
+  const sourceOptions = VoC.SOURCE_OPTIONS || ["X", "Reddit", "Facebook", "TikTok"];
+
+  function toggleSecondary(catKey, team) {
+    setDraft((d) => {
+      const current = d.secondaryOwnership[catKey] || [];
+      const next = current.includes(team) ? current.filter((t) => t !== team) : [...current, team];
+      return { ...d, secondaryOwnership: { ...d.secondaryOwnership, [catKey]: next } };
+    });
+  }
+
+  function toggleMultiSelect(field, value) {
+    setDraft((d) => {
+      const current = d[field] || [];
+      const next = current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
+      return { ...d, [field]: next };
+    });
+  }
 
   return (
-    <div className="max-w-[920px]">
-      <PageHeader title="Settings" subtitle="Control engagement thresholds, ownership, and display defaults. Changes apply globally on save." />
+    <div className="max-w-[920px] pb-24">
+      <PageHeader title="Settings" subtitle="Single source of truth for routing ownership, thresholds, and display defaults. Taxonomy and Routing Matrix are derived from these settings — no separate editing needed." />
 
+      {/* Unsaved changes warning banner */}
+      {hasUnsaved && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-4 flex items-center gap-3">
+          <svg className="w-4 h-4 text-amber-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <span className="text-[13px] text-amber-800">
+            You have <strong>unconfirmed changes</strong> — not applied yet.
+            Click <strong>Confirm Changes</strong> to apply, or <strong>Discard</strong> to revert.
+          </span>
+        </div>
+      )}
+
+      {/* ── Engagement thresholds ──────────────────────────────── */}
       <div className={cardCls + " p-6 mb-4"}>
         <div className="flex items-center justify-between mb-1">
           <h3 className="text-base font-bold text-gray-900">Engagement thresholds</h3>
           <span className="text-[11.5px] text-gray-400">Applies across Overview, Mentions, Action Queue, Routing Matrix, Methodology</span>
         </div>
-        <p className="text-[12.5px] text-gray-500 mb-4">High engagement is automatically anything above Medium max.</p>
+        <p className="text-[12.5px] text-gray-500 mb-4">High engagement is anything above Medium max. Adjust and confirm to recalibrate all views.</p>
 
         <div className="grid grid-cols-2 gap-4 mb-4">
           <SettingField label="Low max" hint="Engagement ≤ this is Low">
-            <input type="number" min="0" value={draftLow} onChange={(e) => setDraftLow(e.target.value)} className="settings-input" />
+            <input type="number" min="0" value={draft.low}
+              onChange={(e) => setDraft((d) => ({ ...d, low: e.target.value }))}
+              className="settings-input" />
           </SettingField>
           <SettingField label="Medium max" hint="Engagement ≤ this is Medium. High = above this.">
-            <input type="number" min="0" value={draftMed} onChange={(e) => setDraftMed(e.target.value)} className="settings-input" />
+            <input type="number" min="0" value={draft.med}
+              onChange={(e) => setDraft((d) => ({ ...d, med: e.target.value }))}
+              className="settings-input" />
           </SettingField>
         </div>
 
@@ -866,38 +944,102 @@ function SettingsPage({ settings, updateSettings, resetSettings }) {
         )}
       </div>
 
+      {/* ── Routing Ownership (was "Taxonomy ownership") ──────── */}
       <div className={cardCls + " p-6 mb-4"}>
-        <h3 className="text-base font-bold text-gray-900 mb-1">Taxonomy ownership</h3>
-        <p className="text-[12.5px] text-gray-500 mb-3">Each category has exactly one Primary Owner. Changes here flow to the Routing Matrix and every Why-routed explanation.</p>
-        <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-          {VoC.TAXONOMY.map((t) => (
-            <div key={t.key} className="flex items-center justify-between gap-3 border-b border-gray-100 pb-2">
-              <div className="text-[13px] font-semibold text-gray-900">{t.label}</div>
-              <select value={VoC.ownerOf(t.key, settings)} onChange={(e) => setOwner(t.key, e.target.value)}
-                      className="bg-[#f0ff5f]/30 text-brand-500 px-2 py-1 rounded text-[12px] font-semibold border-0 focus:outline-none">
-                {owners.map((o) => <option key={o} value={o}>{o}</option>)}
-              </select>
-            </div>
-          ))}
+        <h3 className="text-base font-bold text-gray-900 mb-1">Routing Ownership</h3>
+        <p className="text-[12.5px] text-gray-500 mb-4">
+          <strong>Primary Owner</strong> is accountable for each category.
+          <strong className="ml-1">Secondary Teams</strong> are CC'd on High-engagement alerts via Lark.
+          Changes here flow to Taxonomy and the Routing Matrix automatically.
+        </p>
+        <div className="space-y-2">
+          {VoC.TAXONOMY.map((t) => {
+            const primary = draft.ownership[t.key] || VoC.ownerOf(t.key, settings);
+            const secondary = draft.secondaryOwnership[t.key] || [];
+            return (
+              <div key={t.key} className="border border-gray-100 rounded-lg p-3 bg-gray-50/40 hover:bg-gray-50">
+                <div className="flex items-center gap-3 mb-2.5">
+                  <div className="text-[13px] font-semibold text-gray-900 w-36 shrink-0">{t.label}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-gray-500 font-medium">Primary:</span>
+                    <select
+                      value={primary}
+                      onChange={(e) => setDraft((d) => ({ ...d, ownership: { ...d.ownership, [t.key]: e.target.value } }))}
+                      className="bg-[#f0ff5f]/30 text-brand-500 px-2 py-0.5 rounded text-[12px] font-semibold border-0 focus:outline-none cursor-pointer">
+                      {owners.map((o) => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 flex-wrap pl-0">
+                  <span className="text-[11px] text-gray-500 font-medium w-36 shrink-0">Secondary (CC):</span>
+                  {allSecondaryOptions.map((team) => (
+                    <label key={team} className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={secondary.includes(team)}
+                        onChange={() => toggleSecondary(t.key, team)}
+                        className="accent-brand-500 w-3.5 h-3.5" />
+                      <span className="text-[12px] text-gray-700">{team}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
+      {/* ── Routing rules (sensitive keywords) ────────────────── */}
       <div className={cardCls + " p-6 mb-4"}>
         <h3 className="text-base font-bold text-gray-900 mb-1">Routing rules</h3>
-        <p className="text-[12.5px] text-gray-500 mb-3">Sensitive-keyword escalation is the only routing rule you tune here. The category→owner mapping lives in the section above.</p>
-        <SettingField label="Sensitive keywords" hint="Comma-separated. A mention containing any of these triggers the Escalation flag regardless of engagement.">
-          <input type="text" value={draftKW} onChange={(e) => setDraftKW(e.target.value)} className="settings-input w-full" />
+        <p className="text-[12.5px] text-gray-500 mb-3">
+          Sensitive-keyword escalation. A mention containing any of these triggers the Escalation flag regardless of engagement level.
+        </p>
+        <SettingField label="Sensitive keywords" hint="Comma-separated. Works across all categories.">
+          <input type="text" value={draft.keywords}
+            onChange={(e) => setDraft((d) => ({ ...d, keywords: e.target.value }))}
+            className="settings-input w-full" />
         </SettingField>
       </div>
 
+      {/* ── Display defaults ───────────────────────────────────── */}
       <div className={cardCls + " p-6 mb-4"}>
         <h3 className="text-base font-bold text-gray-900 mb-3">Display defaults</h3>
-        <div className="grid grid-cols-3 gap-4">
-          <SettingField label="Default market"><input type="text" value={draftMarket} onChange={(e) => setMarket(e.target.value)} className="settings-input" /></SettingField>
-          <SettingField label="Default source"><input type="text" value={draftSource} onChange={(e) => setSource(e.target.value)} className="settings-input" /></SettingField>
+        <div className="grid grid-cols-3 gap-6">
+          <div>
+            <div className="text-[12px] font-semibold text-gray-700 mb-2">Default market</div>
+            <div className="space-y-1.5">
+              {marketOptions.map((opt) => (
+                <label key={opt} className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={draft.defaultMarket.includes(opt)}
+                    onChange={() => toggleMultiSelect("defaultMarket", opt)}
+                    className="accent-brand-500 w-3.5 h-3.5" />
+                  <span className="text-[12.5px] text-gray-700">{opt}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="text-[12px] font-semibold text-gray-700 mb-2">Default source</div>
+            <div className="space-y-1.5">
+              {sourceOptions.map((opt) => (
+                <label key={opt} className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={draft.defaultSource.includes(opt)}
+                    onChange={() => toggleMultiSelect("defaultSource", opt)}
+                    className="accent-brand-500 w-3.5 h-3.5" />
+                  <span className="text-[12.5px] text-gray-700">{opt}</span>
+                </label>
+              ))}
+            </div>
+          </div>
           <SettingField label="Default time period">
-            <select value={draftWindow} onChange={(e) => setWindow(e.target.value)} className="settings-input">
-              <option value="24h">24h</option><option value="7d">7d</option><option value="30d">30d</option><option value="90d">90d</option>
+            <select value={draft.defaultTimeWindow}
+              onChange={(e) => setDraft((d) => ({ ...d, defaultTimeWindow: e.target.value }))}
+              className="settings-input">
+              <option value="24h">24h</option>
+              <option value="7d">7d</option>
+              <option value="30d">30d</option>
+              <option value="90d">90d</option>
             </select>
           </SettingField>
         </div>
@@ -905,12 +1047,30 @@ function SettingsPage({ settings, updateSettings, resetSettings }) {
 
       {error && <div className="bg-red-50 border border-red-200 text-red-700 text-[13px] px-4 py-2.5 rounded-lg mb-3">{error}</div>}
 
-      <div className="flex items-center gap-2">
-        <button onClick={save} className="bg-brand-500 text-white px-4 py-2 rounded-lg text-[13px] font-semibold hover:bg-brand-600">Save settings</button>
-        <button onClick={reset} className="bg-white border border-gray-200 text-gray-700 px-4 py-2 rounded-lg text-[13px] font-semibold hover:bg-gray-50">Reset to defaults</button>
+      <div className="flex items-center gap-3 text-[12.5px] text-gray-400">
+        <a href="#/methodology" className="text-coral underline">How thresholds are applied →</a>
         <div className="flex-1" />
-        <a href="#/methodology" className="text-[12.5px] text-coral underline">How thresholds are applied →</a>
+        <button onClick={doReset} className="hover:text-coral hover:underline">Reset to defaults</button>
       </div>
+
+      {/* Bottom action bar — only visible when there are unconfirmed changes */}
+      {hasUnsaved && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-amber-200 px-8 py-3 flex items-center gap-3 z-50 shadow-[0_-2px_12px_rgba(0,0,0,0.08)]">
+          <svg className="w-4 h-4 text-amber-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <span className="text-[13px] text-gray-700 font-medium">Unsaved changes — not applied yet</span>
+          <div className="flex-1" />
+          <button onClick={discard}
+            className="bg-white border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-[13px] font-semibold hover:bg-gray-50">
+            Discard
+          </button>
+          <button onClick={confirm}
+            className="bg-brand-500 text-white px-5 py-2 rounded-lg text-[13px] font-semibold hover:bg-brand-600">
+            Confirm Changes
+          </button>
+        </div>
+      )}
     </div>
   );
 }
