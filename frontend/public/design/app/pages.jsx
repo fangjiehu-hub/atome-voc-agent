@@ -800,6 +800,43 @@ function RationalePage() {
   );
 }
 
+// ─── Secondary multi-select dropdown (compact dropdown with checkboxes) ──
+function SecondaryMultiSelect({ options, selected, onChange }) {
+  const [open, setOpen] = useP(false);
+  const label = selected.length === 0 ? "None"
+    : selected.length === 1 ? selected[0]
+    : selected.length + " teams";
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 text-blue-700 px-2.5 py-1 rounded text-[12px] font-semibold hover:bg-blue-100 min-w-[80px] justify-between">
+        <span>{label}</span>
+        <svg className="w-3 h-3 text-blue-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <React.Fragment>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-40 min-w-[170px]">
+            {options.map((team) => (
+              <label key={team} className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                <input type="checkbox" checked={selected.includes(team)}
+                  onChange={() => {
+                    const next = selected.includes(team) ? selected.filter((t) => t !== team) : [...selected, team];
+                    onChange(next);
+                  }}
+                  className="accent-brand-500 w-3.5 h-3.5" />
+                <span className={"text-[12.5px] " + (selected.includes(team) ? "text-gray-900 font-semibold" : "text-gray-700")}>{team}</span>
+              </label>
+            ))}
+          </div>
+        </React.Fragment>
+      )}
+    </div>
+  );
+}
+
 // =========================================================
 //  SETTINGS — single source of truth (draft/confirm workflow)
 // =========================================================
@@ -812,8 +849,8 @@ function SettingsPage({ settings, updateSettings, resetSettings }) {
       keywords:          s.sensitiveKeywords.join(", "),
       ownership:         { ...s.ownership },
       secondaryOwnership: JSON.parse(JSON.stringify(s.secondaryOwnership || {})),
-      defaultMarket:     [...(Array.isArray(s.defaultMarket) ? s.defaultMarket : [s.defaultMarket || "PH"])],
-      defaultSource:     [...(Array.isArray(s.defaultSource) ? s.defaultSource : [s.defaultSource || "X"])],
+      defaultMarket:     Array.isArray(s.defaultMarket) ? (s.defaultMarket[0] || "PH") : (s.defaultMarket || "PH"),
+      defaultSource:     Array.isArray(s.defaultSource) ? (s.defaultSource[0] || "X")  : (s.defaultSource || "X"),
       defaultTimeWindow: s.defaultTimeWindow,
     };
   }
@@ -829,10 +866,10 @@ function SettingsPage({ settings, updateSettings, resetSettings }) {
     if (JSON.stringify(parsedKW) !== JSON.stringify(settings.sensitiveKeywords)) return true;
     if (JSON.stringify(draft.ownership) !== JSON.stringify(settings.ownership)) return true;
     if (JSON.stringify(draft.secondaryOwnership) !== JSON.stringify(settings.secondaryOwnership || {})) return true;
-    const mkt = Array.isArray(settings.defaultMarket) ? settings.defaultMarket : [settings.defaultMarket];
-    if (JSON.stringify([...draft.defaultMarket].sort()) !== JSON.stringify([...mkt].sort())) return true;
-    const src = Array.isArray(settings.defaultSource) ? settings.defaultSource : [settings.defaultSource];
-    if (JSON.stringify([...draft.defaultSource].sort()) !== JSON.stringify([...src].sort())) return true;
+    const mkt = Array.isArray(settings.defaultMarket) ? (settings.defaultMarket[0] || "PH") : (settings.defaultMarket || "PH");
+    if (draft.defaultMarket !== mkt) return true;
+    const src = Array.isArray(settings.defaultSource) ? (settings.defaultSource[0] || "X") : (settings.defaultSource || "X");
+    if (draft.defaultSource !== src) return true;
     if (draft.defaultTimeWindow !== settings.defaultTimeWindow) return true;
     return false;
   }, [draft, settings]);
@@ -856,8 +893,8 @@ function SettingsPage({ settings, updateSettings, resetSettings }) {
       sensitiveKeywords: draft.keywords.split(",").map((s) => s.trim()).filter(Boolean),
       ownership: { ...draft.ownership },
       secondaryOwnership: JSON.parse(JSON.stringify(draft.secondaryOwnership)),
-      defaultMarket: draft.defaultMarket,
-      defaultSource: draft.defaultSource,
+      defaultMarket: typeof draft.defaultMarket === "string" ? draft.defaultMarket : (draft.defaultMarket[0] || "PH"),
+      defaultSource: typeof draft.defaultSource === "string" ? draft.defaultSource : (draft.defaultSource[0] || "X"),
       defaultTimeWindow: draft.defaultTimeWindow,
     };
     updateSettings(newSettings);
@@ -884,22 +921,14 @@ function SettingsPage({ settings, updateSettings, resetSettings }) {
 
   const owners = [...new Set(Object.values(VoC.DEFAULT_OWNERSHIP))];
   const allSecondaryOptions = ["Risk", "Product", "Legal", "Customer Services", "Collection"];
-  const marketOptions = VoC.MARKET_OPTIONS || [{ value: "PH", label: "Philippines (PH)", active: true }];
-  const sourceOptions = VoC.SOURCE_OPTIONS || [{ value: "X", label: "X / Twitter", active: true }, { value: "Reddit", label: "Reddit", active: true }];
+  const marketOptions = VoC.MARKET_OPTIONS || ["PH", "ID", "MY", "SG", "TW"];
+  const sourceOptions = VoC.SOURCE_OPTIONS || ["X", "Reddit", "Facebook", "TikTok"];
 
   function toggleSecondary(catKey, team) {
     setDraft((d) => {
       const current = d.secondaryOwnership[catKey] || [];
       const next = current.includes(team) ? current.filter((t) => t !== team) : [...current, team];
       return { ...d, secondaryOwnership: { ...d.secondaryOwnership, [catKey]: next } };
-    });
-  }
-
-  function toggleMultiSelect(field, value) {
-    setDraft((d) => {
-      const current = d[field] || [];
-      const next = current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
-      return { ...d, [field]: next };
     });
   }
 
@@ -968,7 +997,7 @@ function SettingsPage({ settings, updateSettings, resetSettings }) {
             const secondary = draft.secondaryOwnership[t.key] || [];
             return (
               <div key={t.key} className="border border-gray-100 rounded-lg p-3 bg-gray-50/40 hover:bg-gray-50">
-                <div className="flex items-center gap-3 mb-2.5">
+                <div className="flex items-center gap-4 flex-wrap">
                   <div className="text-[13px] font-semibold text-gray-900 w-36 shrink-0">{t.label}</div>
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] text-gray-500 font-medium">Primary:</span>
@@ -979,19 +1008,13 @@ function SettingsPage({ settings, updateSettings, resetSettings }) {
                       {owners.map((o) => <option key={o} value={o}>{o}</option>)}
                     </select>
                   </div>
-                </div>
-                <div className="flex items-center gap-3 flex-wrap pl-0">
-                  <span className="text-[11px] text-gray-500 font-medium w-36 shrink-0">Secondary (CC):</span>
-                  {allSecondaryOptions.map((team) => (
-                    <label key={team} className="flex items-center gap-1.5 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={secondary.includes(team)}
-                        onChange={() => toggleSecondary(t.key, team)}
-                        className="accent-brand-500 w-3.5 h-3.5" />
-                      <span className="text-[12px] text-gray-700">{team}</span>
-                    </label>
-                  ))}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-gray-500 font-medium">Secondary (CC):</span>
+                    <SecondaryMultiSelect
+                      options={allSecondaryOptions}
+                      selected={secondary}
+                      onChange={(next) => setDraft((d) => ({ ...d, secondaryOwnership: { ...d.secondaryOwnership, [t.key]: next } }))} />
+                  </div>
                 </div>
               </div>
             );
@@ -1016,40 +1039,20 @@ function SettingsPage({ settings, updateSettings, resetSettings }) {
       <div className={cardCls + " p-6 mb-4"}>
         <h3 className="text-base font-bold text-gray-900 mb-3">Display defaults</h3>
         <div className="grid grid-cols-3 gap-6">
-          <div>
-            <div className="text-[12px] font-semibold text-gray-700 mb-1">Default market</div>
-            <div className="text-[10.5px] text-gray-400 mb-2">To add a new market, update MARKET_OPTIONS in data.js</div>
-            <div className="space-y-1.5">
-              {marketOptions.map((opt) => (
-                <label key={opt.value} className={"flex items-center gap-2 " + (opt.active ? "cursor-pointer" : "cursor-not-allowed opacity-50")}>
-                  <input type="checkbox"
-                    checked={draft.defaultMarket.includes(opt.value)}
-                    onChange={() => opt.active && toggleMultiSelect("defaultMarket", opt.value)}
-                    disabled={!opt.active}
-                    className="accent-brand-500 w-3.5 h-3.5" />
-                  <span className="text-[12.5px] text-gray-700">{opt.label}</span>
-                  {!opt.active && <span className="text-[10px] text-gray-400 italic">coming soon</span>}
-                </label>
-              ))}
-            </div>
-          </div>
-          <div>
-            <div className="text-[12px] font-semibold text-gray-700 mb-1">Default source</div>
-            <div className="text-[10.5px] text-gray-400 mb-2">To add a new source, update SOURCE_OPTIONS in data.js</div>
-            <div className="space-y-1.5">
-              {sourceOptions.map((opt) => (
-                <label key={opt.value} className={"flex items-center gap-2 " + (opt.active ? "cursor-pointer" : "cursor-not-allowed opacity-50")}>
-                  <input type="checkbox"
-                    checked={draft.defaultSource.includes(opt.value)}
-                    onChange={() => opt.active && toggleMultiSelect("defaultSource", opt.value)}
-                    disabled={!opt.active}
-                    className="accent-brand-500 w-3.5 h-3.5" />
-                  <span className="text-[12.5px] text-gray-700">{opt.label}</span>
-                  {!opt.active && <span className="text-[10px] text-gray-400 italic">coming soon</span>}
-                </label>
-              ))}
-            </div>
-          </div>
+          <SettingField label="Default market" hint="To add a new market, append to MARKET_OPTIONS in data.js">
+            <select value={draft.defaultMarket}
+              onChange={(e) => setDraft((d) => ({ ...d, defaultMarket: e.target.value }))}
+              className="settings-input">
+              {marketOptions.map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </SettingField>
+          <SettingField label="Default source" hint="To add a new source, append to SOURCE_OPTIONS in data.js">
+            <select value={draft.defaultSource}
+              onChange={(e) => setDraft((d) => ({ ...d, defaultSource: e.target.value }))}
+              className="settings-input">
+              {sourceOptions.map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </SettingField>
           <SettingField label="Default time period">
             <select value={draft.defaultTimeWindow}
               onChange={(e) => setDraft((d) => ({ ...d, defaultTimeWindow: e.target.value }))}

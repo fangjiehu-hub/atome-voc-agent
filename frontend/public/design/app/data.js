@@ -66,22 +66,10 @@
     "fraud":             ["Legal", "Collection"],
   };
 
-  // Available options for multi-select display defaults.
-  // { value, label, active } — active=true means the crawler is live; false=planned.
-  // To add a new market or source: add an entry here and deploy.
-  const MARKET_OPTIONS = [
-    { value: "PH", label: "Philippines (PH)", active: true  },
-    { value: "ID", label: "Indonesia (ID)",   active: false },
-    { value: "MY", label: "Malaysia (MY)",    active: false },
-    { value: "SG", label: "Singapore (SG)",   active: false },
-    { value: "TW", label: "Taiwan (TW)",      active: false },
-  ];
-  const SOURCE_OPTIONS = [
-    { value: "X",        label: "X / Twitter", active: true  },
-    { value: "Reddit",   label: "Reddit",       active: true  },
-    { value: "Facebook", label: "Facebook",     active: false },
-    { value: "TikTok",   label: "TikTok",       active: false },
-  ];
+  // Dropdown options for display defaults.
+  // To add a new market or source when it goes live: add an entry here and deploy.
+  const MARKET_OPTIONS = ["PH", "ID", "MY", "SG", "TW"];
+  const SOURCE_OPTIONS = ["X", "Reddit", "Facebook", "TikTok"];
 
   // Prefer settings.secondaryOwnership (user-configured) → fall back to static map
   function secondaryTeamsOf(categoryKey, settings) {
@@ -166,13 +154,8 @@
                               ? { ...SERVER_SETTINGS.secondaryOwnership }
                               : JSON.parse(JSON.stringify(SECONDARY_TEAMS_MAP)),
       mentionOverrides:     {},
-      // defaultMarket / defaultSource are arrays (multi-select)
-      defaultMarket:        SERVER_SETTINGS
-                              ? (Array.isArray(SERVER_SETTINGS.defaultMarket) ? SERVER_SETTINGS.defaultMarket : ["PH"])
-                              : ["PH"],
-      defaultSource:        SERVER_SETTINGS
-                              ? (Array.isArray(SERVER_SETTINGS.defaultSource) ? SERVER_SETTINGS.defaultSource : ["X", "Reddit"])
-                              : ["X", "Reddit"],
+      defaultMarket:        SERVER_SETTINGS ? (SERVER_SETTINGS.defaultMarket || "PH")       : "PH",
+      defaultSource:        SERVER_SETTINGS ? (SERVER_SETTINGS.defaultSource || "X")       : "X",
       defaultTimeWindow:    SERVER_SETTINGS ? SERVER_SETTINGS.defaultTimeWindow    : "7d",
     };
   }
@@ -183,11 +166,9 @@
       const raw = localStorage.getItem(SETTINGS_KEY);
       if (!raw) return base;
       const parsed = JSON.parse(raw);
-      // Coerce legacy string market/source to arrays
-      const market = Array.isArray(parsed.defaultMarket) ? parsed.defaultMarket
-        : (parsed.defaultMarket ? [parsed.defaultMarket] : base.defaultMarket);
-      const source = Array.isArray(parsed.defaultSource) ? parsed.defaultSource
-        : (parsed.defaultSource ? parsed.defaultSource.split("+").map((s) => s.trim()).filter(Boolean) : base.defaultSource);
+      // Coerce legacy array market/source back to string
+      const market = Array.isArray(parsed.defaultMarket) ? (parsed.defaultMarket[0] || "PH") : (parsed.defaultMarket || base.defaultMarket);
+      const source = Array.isArray(parsed.defaultSource) ? (parsed.defaultSource[0] || "X")  : (parsed.defaultSource || base.defaultSource);
       return {
         ...base, ...parsed,
         engagementThresholds: { ...base.engagementThresholds, ...(parsed.engagementThresholds || {}) },

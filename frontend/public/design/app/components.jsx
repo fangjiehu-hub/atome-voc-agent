@@ -75,10 +75,10 @@ function Topbar({ route, settings }) {
       </div>
       <div className="flex-1" />
       <div className="flex items-center gap-1.5 bg-brand-50 border border-brand-300 px-2.5 py-1.5 rounded-lg text-[13px] text-brand-500 font-semibold">
-        {(Array.isArray(settings.defaultMarket) ? settings.defaultMarket : [settings.defaultMarket]).join(", ")} Philippines
+        {Array.isArray(settings.defaultMarket) ? settings.defaultMarket[0] : settings.defaultMarket} Philippines
       </div>
       <div className="flex items-center gap-1.5 bg-brand-50 border border-brand-300 px-2.5 py-1.5 rounded-lg text-[13px] text-brand-500 font-semibold">
-        {(Array.isArray(settings.defaultSource) ? settings.defaultSource : [settings.defaultSource]).join(" + ")}
+        {Array.isArray(settings.defaultSource) ? settings.defaultSource.join(" + ") : settings.defaultSource}
       </div>
       <div className="w-[34px] h-[34px] rounded-full bg-[#141c30] flex items-center justify-center text-[#f0ff5f] font-bold text-xs">DS</div>
     </div>
@@ -100,7 +100,7 @@ function DataFreshnessBanner({ settings }) {
       <span className="text-gray-300">·</span>
       <span>Next refresh <strong className="text-gray-800">{f.nextRefresh}</strong></span>
       <span className="text-gray-300">·</span>
-      <span>Market <strong className="text-gray-800">{(Array.isArray(settings.defaultMarket) ? settings.defaultMarket : [settings.defaultMarket]).join(", ")}</strong></span>
+      <span>Market <strong className="text-gray-800">{Array.isArray(settings.defaultMarket) ? settings.defaultMarket[0] : settings.defaultMarket}</strong></span>
       <span className="text-gray-300">·</span>
       <span className="inline-flex items-center gap-1">
         Active sources:&nbsp;
