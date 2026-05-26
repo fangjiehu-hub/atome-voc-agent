@@ -806,9 +806,19 @@ function RationalePage() {
 function ActiveMultiSelectDropdown({ options, selected, onChange }) {
   const [open, setOpen] = useP(false);
   const label = selected.length === 0 ? "None" : selected.join(" + ");
+
+  // Close on any click outside via document-level listener (most reliable across stacking contexts)
+  useE(() => {
+    if (!open) return;
+    function onDocClick() { setOpen(false); }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
   return (
     <div className="relative">
-      <button type="button" onClick={() => setOpen((v) => !v)}
+      <button type="button"
+        onMouseDown={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
         className="settings-input flex items-center justify-between w-full text-left">
         <span className={selected.length === 0 ? "text-gray-400" : "font-medium"}>{label}</span>
         <svg className="w-3.5 h-3.5 text-gray-400 ml-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
@@ -816,29 +826,27 @@ function ActiveMultiSelectDropdown({ options, selected, onChange }) {
         </svg>
       </button>
       {open && (
-        <React.Fragment>
-          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-40 min-w-full">
-            {options.map((opt) => (
-              <label key={opt.value}
-                className={"flex items-center gap-2.5 px-3 py-2 text-[12.5px] " + (opt.active ? "hover:bg-gray-50 cursor-pointer" : "opacity-40 cursor-not-allowed")}>
-                <input type="checkbox"
-                  checked={selected.includes(opt.value)}
-                  disabled={!opt.active}
-                  onChange={() => {
-                    if (!opt.active) return;
-                    const next = selected.includes(opt.value)
-                      ? selected.filter((v) => v !== opt.value)
-                      : [...selected, opt.value];
-                    onChange(next);
-                  }}
-                  className="accent-brand-500 w-3.5 h-3.5" />
-                <span className={selected.includes(opt.value) ? "font-semibold text-gray-900" : "text-gray-700"}>{opt.value}</span>
-                {!opt.active && <span className="text-[10px] text-gray-400 italic ml-auto">coming soon</span>}
-              </label>
-            ))}
-          </div>
-        </React.Fragment>
+        <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-40 min-w-full"
+          onMouseDown={(e) => e.stopPropagation()}>
+          {options.map((opt) => (
+            <label key={opt.value}
+              className={"flex items-center gap-2.5 px-3 py-2 text-[12.5px] " + (opt.active ? "hover:bg-gray-50 cursor-pointer" : "opacity-40 cursor-not-allowed")}>
+              <input type="checkbox"
+                checked={selected.includes(opt.value)}
+                disabled={!opt.active}
+                onChange={() => {
+                  if (!opt.active) return;
+                  const next = selected.includes(opt.value)
+                    ? selected.filter((v) => v !== opt.value)
+                    : [...selected, opt.value];
+                  onChange(next);
+                }}
+                className="accent-brand-500 w-3.5 h-3.5" />
+              <span className={selected.includes(opt.value) ? "font-semibold text-gray-900" : "text-gray-700"}>{opt.value}</span>
+              {!opt.active && <span className="text-[10px] text-gray-400 italic ml-auto">coming soon</span>}
+            </label>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -850,9 +858,18 @@ function SecondaryMultiSelect({ options, selected, onChange }) {
   const label = selected.length === 0 ? "None"
     : selected.length === 1 ? selected[0]
     : selected.length + " teams";
+
+  useE(() => {
+    if (!open) return;
+    function onDocClick() { setOpen(false); }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
   return (
     <div className="relative">
-      <button type="button" onClick={() => setOpen((v) => !v)}
+      <button type="button"
+        onMouseDown={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
         className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 text-blue-700 px-2.5 py-1 rounded text-[12px] font-semibold hover:bg-blue-100 min-w-[80px] justify-between">
         <span>{label}</span>
         <svg className="w-3 h-3 text-blue-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
@@ -860,22 +877,20 @@ function SecondaryMultiSelect({ options, selected, onChange }) {
         </svg>
       </button>
       {open && (
-        <React.Fragment>
-          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-40 min-w-[170px]">
-            {options.map((team) => (
-              <label key={team} className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer">
-                <input type="checkbox" checked={selected.includes(team)}
-                  onChange={() => {
-                    const next = selected.includes(team) ? selected.filter((t) => t !== team) : [...selected, team];
-                    onChange(next);
-                  }}
-                  className="accent-brand-500 w-3.5 h-3.5" />
-                <span className={"text-[12.5px] " + (selected.includes(team) ? "text-gray-900 font-semibold" : "text-gray-700")}>{team}</span>
-              </label>
-            ))}
-          </div>
-        </React.Fragment>
+        <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-40 min-w-[170px]"
+          onMouseDown={(e) => e.stopPropagation()}>
+          {options.map((team) => (
+            <label key={team} className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+              <input type="checkbox" checked={selected.includes(team)}
+                onChange={() => {
+                  const next = selected.includes(team) ? selected.filter((t) => t !== team) : [...selected, team];
+                  onChange(next);
+                }}
+                className="accent-brand-500 w-3.5 h-3.5" />
+              <span className={"text-[12.5px] " + (selected.includes(team) ? "text-gray-900 font-semibold" : "text-gray-700")}>{team}</span>
+            </label>
+          ))}
+        </div>
       )}
     </div>
   );
