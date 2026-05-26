@@ -1314,12 +1314,15 @@ function AlertDeliveryPage({ settings, navigate, updateSettings }) {
           <div>
             <div className={sectionTitleCls + " text-[13px] mb-3"}>Daily Alert</div>
             <div className="space-y-3">
-              <div className="flex items-center gap-2.5">
-                <button
-                  type="button"
+              <div className="flex items-center gap-3">
+                <button type="button"
                   onClick={() => setSchedule((s) => ({ ...s, daily: { ...s.daily, enabled: !s.daily.enabled } }))}
-                  className={"shrink-0 inline-block w-9 h-5 rounded-full transition-colors relative " + (schedule.daily.enabled ? "bg-brand-500" : "bg-gray-300")}>
-                  <span className={"absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform " + (schedule.daily.enabled ? "translate-x-4" : "translate-x-0.5")} />
+                  style={{ width: 36, height: 20, borderRadius: 10, flexShrink: 0, position: "relative", transition: "background 0.15s", background: schedule.daily.enabled ? "#f0ff5f" : "#D1D5DB", border: "none", padding: 0, cursor: "pointer" }}>
+                  <span style={{
+                    position: "absolute", top: 2, left: schedule.daily.enabled ? 18 : 2,
+                    width: 16, height: 16, borderRadius: "50%", background: schedule.daily.enabled ? "#141c30" : "white",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.15s"
+                  }} />
                 </button>
                 <span className="text-[13px] text-gray-700 font-medium">{schedule.daily.enabled ? "Enabled" : "Disabled"}</span>
               </div>
@@ -1338,7 +1341,7 @@ function AlertDeliveryPage({ settings, navigate, updateSettings }) {
                 </select>
               </div>
               <button onClick={() => saveSchedule("daily")} disabled={scheduleSaving === "daily"}
-                className="bg-brand-500 text-white px-4 py-2 rounded-lg text-[13px] font-semibold hover:bg-brand-600 disabled:opacity-60">
+                className="bg-[#141c30] text-[#f0ff5f] px-4 py-2 rounded-lg text-[13px] font-semibold hover:opacity-80 disabled:opacity-40">
                 {scheduleSaving === "daily" ? "Saving…" : "Save Schedule"}
               </button>
             </div>
@@ -1348,12 +1351,15 @@ function AlertDeliveryPage({ settings, navigate, updateSettings }) {
           <div>
             <div className={sectionTitleCls + " text-[13px] mb-3"}>Weekly Summary</div>
             <div className="space-y-3">
-              <div className="flex items-center gap-2.5">
-                <button
-                  type="button"
+              <div className="flex items-center gap-3">
+                <button type="button"
                   onClick={() => setSchedule((s) => ({ ...s, weekly: { ...s.weekly, enabled: !s.weekly.enabled } }))}
-                  className={"shrink-0 inline-block w-9 h-5 rounded-full transition-colors relative " + (schedule.weekly.enabled ? "bg-brand-500" : "bg-gray-300")}>
-                  <span className={"absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform " + (schedule.weekly.enabled ? "translate-x-4" : "translate-x-0.5")} />
+                  style={{ width: 36, height: 20, borderRadius: 10, flexShrink: 0, position: "relative", transition: "background 0.15s", background: schedule.weekly.enabled ? "#f0ff5f" : "#D1D5DB", border: "none", padding: 0, cursor: "pointer" }}>
+                  <span style={{
+                    position: "absolute", top: 2, left: schedule.weekly.enabled ? 18 : 2,
+                    width: 16, height: 16, borderRadius: "50%", background: schedule.weekly.enabled ? "#141c30" : "white",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.15s"
+                  }} />
                 </button>
                 <span className="text-[13px] text-gray-700 font-medium">{schedule.weekly.enabled ? "Enabled" : "Disabled"}</span>
               </div>
@@ -1380,7 +1386,7 @@ function AlertDeliveryPage({ settings, navigate, updateSettings }) {
                 </select>
               </div>
               <button onClick={() => saveSchedule("weekly")} disabled={scheduleSaving === "weekly"}
-                className="bg-brand-500 text-white px-4 py-2 rounded-lg text-[13px] font-semibold hover:bg-brand-600 disabled:opacity-60">
+                className="bg-[#141c30] text-[#f0ff5f] px-4 py-2 rounded-lg text-[13px] font-semibold hover:opacity-80 disabled:opacity-40">
                 {scheduleSaving === "weekly" ? "Saving…" : "Save Schedule"}
               </button>
             </div>
