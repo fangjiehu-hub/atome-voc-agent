@@ -1314,15 +1314,15 @@ function AlertDeliveryPage({ settings, navigate, updateSettings }) {
           <div>
             <div className={sectionTitleCls + " text-[13px] mb-3"}>Daily Alert</div>
             <div className="space-y-3">
-              <label className="flex items-center gap-2.5 cursor-pointer">
+              <div className="flex items-center gap-2.5">
                 <button
                   type="button"
                   onClick={() => setSchedule((s) => ({ ...s, daily: { ...s.daily, enabled: !s.daily.enabled } }))}
-                  className={"w-9 h-5 rounded-full transition-colors relative " + (schedule.daily.enabled ? "bg-brand-500" : "bg-gray-300")}>
+                  className={"shrink-0 inline-block w-9 h-5 rounded-full transition-colors relative " + (schedule.daily.enabled ? "bg-brand-500" : "bg-gray-300")}>
                   <span className={"absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform " + (schedule.daily.enabled ? "translate-x-4" : "translate-x-0.5")} />
                 </button>
                 <span className="text-[13px] text-gray-700 font-medium">{schedule.daily.enabled ? "Enabled" : "Disabled"}</span>
-              </label>
+              </div>
               <div>
                 <label className="block text-[12px] font-semibold text-gray-700 mb-1">Send Time</label>
                 <input type="time" value={schedule.daily.time}
@@ -1348,15 +1348,15 @@ function AlertDeliveryPage({ settings, navigate, updateSettings }) {
           <div>
             <div className={sectionTitleCls + " text-[13px] mb-3"}>Weekly Summary</div>
             <div className="space-y-3">
-              <label className="flex items-center gap-2.5 cursor-pointer">
+              <div className="flex items-center gap-2.5">
                 <button
                   type="button"
                   onClick={() => setSchedule((s) => ({ ...s, weekly: { ...s.weekly, enabled: !s.weekly.enabled } }))}
-                  className={"w-9 h-5 rounded-full transition-colors relative " + (schedule.weekly.enabled ? "bg-brand-500" : "bg-gray-300")}>
+                  className={"shrink-0 inline-block w-9 h-5 rounded-full transition-colors relative " + (schedule.weekly.enabled ? "bg-brand-500" : "bg-gray-300")}>
                   <span className={"absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform " + (schedule.weekly.enabled ? "translate-x-4" : "translate-x-0.5")} />
                 </button>
                 <span className="text-[13px] text-gray-700 font-medium">{schedule.weekly.enabled ? "Enabled" : "Disabled"}</span>
-              </label>
+              </div>
               <div>
                 <label className="block text-[12px] font-semibold text-gray-700 mb-1">Day of Week</label>
                 <select value={schedule.weekly.day}
