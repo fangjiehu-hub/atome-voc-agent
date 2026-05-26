@@ -800,6 +800,50 @@ function RationalePage() {
   );
 }
 
+// ─── Multi-select dropdown with active/coming-soon states ─────────────────
+// options: [{ value, active }]  selected: string[]  onChange: (string[]) => void
+// Display: selected values joined with " + ", e.g. "X + Reddit"
+function ActiveMultiSelectDropdown({ options, selected, onChange }) {
+  const [open, setOpen] = useP(false);
+  const label = selected.length === 0 ? "None" : selected.join(" + ");
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen((v) => !v)}
+        className="settings-input flex items-center justify-between w-full text-left">
+        <span className={selected.length === 0 ? "text-gray-400" : "font-medium"}>{label}</span>
+        <svg className="w-3.5 h-3.5 text-gray-400 ml-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <React.Fragment>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-40 min-w-full">
+            {options.map((opt) => (
+              <label key={opt.value}
+                className={"flex items-center gap-2.5 px-3 py-2 text-[12.5px] " + (opt.active ? "hover:bg-gray-50 cursor-pointer" : "opacity-40 cursor-not-allowed")}>
+                <input type="checkbox"
+                  checked={selected.includes(opt.value)}
+                  disabled={!opt.active}
+                  onChange={() => {
+                    if (!opt.active) return;
+                    const next = selected.includes(opt.value)
+                      ? selected.filter((v) => v !== opt.value)
+                      : [...selected, opt.value];
+                    onChange(next);
+                  }}
+                  className="accent-brand-500 w-3.5 h-3.5" />
+                <span className={selected.includes(opt.value) ? "font-semibold text-gray-900" : "text-gray-700"}>{opt.value}</span>
+                {!opt.active && <span className="text-[10px] text-gray-400 italic ml-auto">coming soon</span>}
+              </label>
+            ))}
+          </div>
+        </React.Fragment>
+      )}
+    </div>
+  );
+}
+
 // ─── Secondary multi-select dropdown (compact dropdown with checkboxes) ──
 function SecondaryMultiSelect({ options, selected, onChange }) {
   const [open, setOpen] = useP(false);
@@ -849,8 +893,8 @@ function SettingsPage({ settings, updateSettings, resetSettings }) {
       keywords:          s.sensitiveKeywords.join(", "),
       ownership:         { ...s.ownership },
       secondaryOwnership: JSON.parse(JSON.stringify(s.secondaryOwnership || {})),
-      defaultMarket:     Array.isArray(s.defaultMarket) ? (s.defaultMarket[0] || "PH") : (s.defaultMarket || "PH"),
-      defaultSource:     Array.isArray(s.defaultSource) ? (s.defaultSource[0] || "X")  : (s.defaultSource || "X"),
+      defaultMarket:     Array.isArray(s.defaultMarket) ? [...s.defaultMarket] : (s.defaultMarket ? [s.defaultMarket] : ["PH"]),
+      defaultSource:     Array.isArray(s.defaultSource) ? [...s.defaultSource] : (s.defaultSource ? [s.defaultSource] : ["X", "Reddit"]),
       defaultTimeWindow: s.defaultTimeWindow,
     };
   }
@@ -866,10 +910,10 @@ function SettingsPage({ settings, updateSettings, resetSettings }) {
     if (JSON.stringify(parsedKW) !== JSON.stringify(settings.sensitiveKeywords)) return true;
     if (JSON.stringify(draft.ownership) !== JSON.stringify(settings.ownership)) return true;
     if (JSON.stringify(draft.secondaryOwnership) !== JSON.stringify(settings.secondaryOwnership || {})) return true;
-    const mkt = Array.isArray(settings.defaultMarket) ? (settings.defaultMarket[0] || "PH") : (settings.defaultMarket || "PH");
-    if (draft.defaultMarket !== mkt) return true;
-    const src = Array.isArray(settings.defaultSource) ? (settings.defaultSource[0] || "X") : (settings.defaultSource || "X");
-    if (draft.defaultSource !== src) return true;
+    const mkt = Array.isArray(settings.defaultMarket) ? settings.defaultMarket : [settings.defaultMarket || "PH"];
+    if (JSON.stringify([...draft.defaultMarket].sort()) !== JSON.stringify([...mkt].sort())) return true;
+    const src = Array.isArray(settings.defaultSource) ? settings.defaultSource : [settings.defaultSource || "X"];
+    if (JSON.stringify([...draft.defaultSource].sort()) !== JSON.stringify([...src].sort())) return true;
     if (draft.defaultTimeWindow !== settings.defaultTimeWindow) return true;
     return false;
   }, [draft, settings]);
@@ -893,8 +937,8 @@ function SettingsPage({ settings, updateSettings, resetSettings }) {
       sensitiveKeywords: draft.keywords.split(",").map((s) => s.trim()).filter(Boolean),
       ownership: { ...draft.ownership },
       secondaryOwnership: JSON.parse(JSON.stringify(draft.secondaryOwnership)),
-      defaultMarket: typeof draft.defaultMarket === "string" ? draft.defaultMarket : (draft.defaultMarket[0] || "PH"),
-      defaultSource: typeof draft.defaultSource === "string" ? draft.defaultSource : (draft.defaultSource[0] || "X"),
+      defaultMarket: draft.defaultMarket,
+      defaultSource: draft.defaultSource,
       defaultTimeWindow: draft.defaultTimeWindow,
     };
     updateSettings(newSettings);
@@ -1039,19 +1083,17 @@ function SettingsPage({ settings, updateSettings, resetSettings }) {
       <div className={cardCls + " p-6 mb-4"}>
         <h3 className="text-base font-bold text-gray-900 mb-3">Display defaults</h3>
         <div className="grid grid-cols-3 gap-6">
-          <SettingField label="Default market" hint="To add a new market, append to MARKET_OPTIONS in data.js">
-            <select value={draft.defaultMarket}
-              onChange={(e) => setDraft((d) => ({ ...d, defaultMarket: e.target.value }))}
-              className="settings-input">
-              {marketOptions.map((o) => <option key={o} value={o}>{o}</option>)}
-            </select>
+          <SettingField label="Default market" hint="To activate a new market: set active=true in MARKET_OPTIONS (data.js) + deploy.">
+            <ActiveMultiSelectDropdown
+              options={marketOptions}
+              selected={draft.defaultMarket}
+              onChange={(next) => setDraft((d) => ({ ...d, defaultMarket: next }))} />
           </SettingField>
-          <SettingField label="Default source" hint="To add a new source, append to SOURCE_OPTIONS in data.js">
-            <select value={draft.defaultSource}
-              onChange={(e) => setDraft((d) => ({ ...d, defaultSource: e.target.value }))}
-              className="settings-input">
-              {sourceOptions.map((o) => <option key={o} value={o}>{o}</option>)}
-            </select>
+          <SettingField label="Default source" hint="To activate a new source: set active=true in SOURCE_OPTIONS (data.js) + deploy.">
+            <ActiveMultiSelectDropdown
+              options={sourceOptions}
+              selected={draft.defaultSource}
+              onChange={(next) => setDraft((d) => ({ ...d, defaultSource: next }))} />
           </SettingField>
           <SettingField label="Default time period">
             <select value={draft.defaultTimeWindow}

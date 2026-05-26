@@ -67,9 +67,21 @@
   };
 
   // Dropdown options for display defaults.
-  // To add a new market or source when it goes live: add an entry here and deploy.
-  const MARKET_OPTIONS = ["PH", "ID", "MY", "SG", "TW"];
-  const SOURCE_OPTIONS = ["X", "Reddit", "Facebook", "TikTok"];
+  // active=true → selectable now; false → greyed out "coming soon".
+  // To activate a new market/source: flip active to true and deploy.
+  const MARKET_OPTIONS = [
+    { value: "PH", active: true  },
+    { value: "ID", active: false },
+    { value: "MY", active: false },
+    { value: "SG", active: false },
+    { value: "TW", active: false },
+  ];
+  const SOURCE_OPTIONS = [
+    { value: "X",        active: true  },
+    { value: "Reddit",   active: true  },
+    { value: "Facebook", active: false },
+    { value: "TikTok",   active: false },
+  ];
 
   // Prefer settings.secondaryOwnership (user-configured) → fall back to static map
   function secondaryTeamsOf(categoryKey, settings) {
@@ -154,8 +166,12 @@
                               ? { ...SERVER_SETTINGS.secondaryOwnership }
                               : JSON.parse(JSON.stringify(SECONDARY_TEAMS_MAP)),
       mentionOverrides:     {},
-      defaultMarket:        SERVER_SETTINGS ? (SERVER_SETTINGS.defaultMarket || "PH")       : "PH",
-      defaultSource:        SERVER_SETTINGS ? (SERVER_SETTINGS.defaultSource || "X")       : "X",
+      defaultMarket: SERVER_SETTINGS
+        ? (Array.isArray(SERVER_SETTINGS.defaultMarket) ? SERVER_SETTINGS.defaultMarket : (SERVER_SETTINGS.defaultMarket ? [SERVER_SETTINGS.defaultMarket] : ["PH"]))
+        : ["PH"],
+      defaultSource: SERVER_SETTINGS
+        ? (Array.isArray(SERVER_SETTINGS.defaultSource) ? SERVER_SETTINGS.defaultSource : (SERVER_SETTINGS.defaultSource ? [SERVER_SETTINGS.defaultSource] : ["X", "Reddit"]))
+        : ["X", "Reddit"],
       defaultTimeWindow:    SERVER_SETTINGS ? SERVER_SETTINGS.defaultTimeWindow    : "7d",
     };
   }
@@ -166,9 +182,10 @@
       const raw = localStorage.getItem(SETTINGS_KEY);
       if (!raw) return base;
       const parsed = JSON.parse(raw);
-      // Coerce legacy array market/source back to string
-      const market = Array.isArray(parsed.defaultMarket) ? (parsed.defaultMarket[0] || "PH") : (parsed.defaultMarket || base.defaultMarket);
-      const source = Array.isArray(parsed.defaultSource) ? (parsed.defaultSource[0] || "X")  : (parsed.defaultSource || base.defaultSource);
+      const market = Array.isArray(parsed.defaultMarket) ? parsed.defaultMarket
+        : (parsed.defaultMarket ? [parsed.defaultMarket] : base.defaultMarket);
+      const source = Array.isArray(parsed.defaultSource) ? parsed.defaultSource
+        : (parsed.defaultSource ? [parsed.defaultSource] : base.defaultSource);
       return {
         ...base, ...parsed,
         engagementThresholds: { ...base.engagementThresholds, ...(parsed.engagementThresholds || {}) },
