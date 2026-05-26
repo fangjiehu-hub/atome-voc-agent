@@ -23,8 +23,9 @@ function Sidebar({ route, navigate }) {
       { href: "rationale", label: "Logic & Rationale" },
     ]},
     { label: "Admin", items: [
-      { href: "settings", label: "Settings" },
-      { href: "log",      label: "Correction Log" },
+      { href: "settings",        label: "Settings" },
+      { href: "alert-delivery",  label: "Alert Delivery" },
+      { href: "log",             label: "Correction Log" },
     ]},
   ];
 
@@ -61,12 +62,12 @@ function Sidebar({ route, navigate }) {
 const PAGE_TITLES = {
   overview: "Executive Overview", mentions: "All Posts with Filter", queue: "Items Needing Attention",
   taxonomy: "Taxonomy", routing: "Routing Matrix", methodology: "Methodology",
-  rationale: "Logic & Rationale", settings: "Settings", log: "Correction Log",
+  rationale: "Logic & Rationale", settings: "Settings", "alert-delivery": "Alert Delivery", log: "Correction Log",
 };
 
 function Topbar({ route, settings }) {
   const title = PAGE_TITLES[route] || "Dashboard";
-  const breadcrumb = ["settings","log"].includes(route) ? "Admin"
+  const breadcrumb = ["settings","alert-delivery","log"].includes(route) ? "Admin"
     : ["taxonomy","routing","methodology","rationale"].includes(route) ? "Logic" : "Monitor";
   return (
     <div className="bg-white border-b border-gray-200 px-7 py-3.5 flex items-center gap-3.5 sticky top-0 z-10">

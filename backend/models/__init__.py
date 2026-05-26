@@ -8,6 +8,7 @@ from backend.models.routing import RoutingRule
 from backend.models.lark_bot import LarkBot
 from backend.models.app_settings import AppSettings
 from backend.models.correction import Correction
+from backend.models.alert_delivery_config import AlertDeliveryConfig
 
 __all__ = [
     "User",
@@ -21,4 +22,5 @@ __all__ = [
     "LarkBot",
     "AppSettings",
     "Correction",
+    "AlertDeliveryConfig",
 ]

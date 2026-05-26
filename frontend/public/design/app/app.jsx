@@ -56,8 +56,9 @@ function App() {
     case "routing":     page = <RoutingMatrixPage settings={settings} />; break;
     case "methodology": page = <MethodologyPage settings={settings} />; break;
     case "rationale":   page = <RationalePage />; break;
-    case "settings":    page = <SettingsPage settings={settings} updateSettings={updateSettings} resetSettings={reset} />; break;
-    case "log":         page = <CorrectionLogPage settings={settings} log={log} clearLog={clearLog} />; break;
+    case "settings":        page = <SettingsPage settings={settings} updateSettings={updateSettings} resetSettings={reset} />; break;
+    case "alert-delivery":  page = <AlertDeliveryPage settings={settings} navigate={navigate} />; break;
+    case "log":             page = <CorrectionLogPage settings={settings} log={log} clearLog={clearLog} />; break;
     default:            page = <OverviewPage settings={settings} openDrillDown={openDrillDown} openCorrection={openCorrection} navigate={navigate} />;
   }
 

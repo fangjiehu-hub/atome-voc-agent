@@ -6,7 +6,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api import alerts, analytics, auth, crawler, feedback, incidents, lark_bots, monitor, routing, taxonomy, v2
+from backend.api import alert_delivery, alerts, analytics, auth, crawler, feedback, incidents, lark_bots, monitor, routing, taxonomy, v2
 from backend.config import settings
 
 
@@ -84,6 +84,7 @@ app.include_router(lark_bots.router)
 app.include_router(routing.router)
 # v2 — design-aligned endpoints consumed by the Claude Design frontend
 app.include_router(v2.router)
+app.include_router(alert_delivery.router)
 
 
 @app.get("/health")

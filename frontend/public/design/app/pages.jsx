@@ -625,6 +625,14 @@ function RoutingMatrixPage({ settings }) {
         <div>
           <div className="font-bold text-brand-500 mb-0.5">One Primary Owner per category. Secondary teams are CC'd on High-engagement alerts.</div>
           High-engagement posts (engagement &gt; {settings.engagementThresholds.mediumMax}) send a Lark card to the <strong>shared group channel</strong> configured via <code>LARK_ALERT_WEBHOOK_URL</code>. The card shows the Primary Owner and CC teams as metadata — it is a group notification, not a personal DM to the owner.
+          <span className="ml-2 text-brand-500 font-semibold">
+            ·{" "}
+            <a href="#/alert-delivery"
+              onClick={(e) => { e.preventDefault(); window.location.hash = "#/alert-delivery"; }}
+              className="underline hover:text-brand-600">
+              Configure per-category alert delivery →
+            </a>
+          </span>
         </div>
       </div>
 
@@ -1164,6 +1172,426 @@ function SettingField({ label, hint, children }) {
 }
 
 // =========================================================
+//  ALERT DELIVERY CONFIGURATION
+// =========================================================
+
+const CHANNEL_LABELS = { lark_group: "Lark Group", owner_dm: "Owner DM" };
+const THRESHOLD_OPTIONS = ["Low", "Medium", "High"];
+
+function AlertDeliveryPage({ settings, navigate }) {
+  const [configs, setConfigs] = useP([]);
+  const [loading, setLoading] = useP(true);
+  const [fetchErr, setFetchErr] = useP(null);
+  const [editTarget, setEditTarget] = useP(null); // { config } | { taxonomy } for new
+  const [testState, setTestState] = useP({}); // configId -> { loading, success, message }
+
+  function loadConfigs() {
+    setLoading(true);
+    fetch("/api/v2/alert-delivery-configs")
+      .then((r) => r.json())
+      .then((d) => { setConfigs(d.items || []); setLoading(false); })
+      .catch(() => { setFetchErr("Could not load from /api/v2/alert-delivery-configs. Backend may be unreachable."); setLoading(false); });
+  }
+  useE(() => { loadConfigs(); }, []);
+
+  // Merge taxonomy list with existing configs
+  const rows = useM(() => {
+    const byTax = {};
+    for (const c of configs) byTax[c.taxonomy] = c;
+    return VoC.TAXONOMY.map((t) => ({ taxonomy: t, config: byTax[t.key] || null }));
+  }, [configs]);
+
+  async function handleToggle(config) {
+    try {
+      const r = await fetch(`/api/v2/alert-delivery-configs/${config.id}/toggle`, { method: "PATCH" });
+      const updated = await r.json();
+      setConfigs((prev) => prev.map((c) => c.id === updated.id ? updated : c));
+    } catch { alert("Toggle failed. Check that the backend is reachable."); }
+  }
+
+  async function handleDelete(id) {
+    if (!confirm("Delete this alert delivery config?")) return;
+    try {
+      await fetch(`/api/v2/alert-delivery-configs/${id}`, { method: "DELETE" });
+      setConfigs((prev) => prev.filter((c) => c.id !== id));
+    } catch { alert("Delete failed."); }
+  }
+
+  async function handleTestGroup(id) {
+    setTestState((p) => ({ ...p, [id]: { loading: true } }));
+    try {
+      const r = await fetch(`/api/v2/alert-delivery-configs/${id}/test-group`, { method: "POST" });
+      const d = await r.json();
+      setTestState((p) => ({ ...p, [id]: d }));
+    } catch { setTestState((p) => ({ ...p, [id]: { success: false, message: "Request failed" } })); }
+  }
+
+  async function handleSaveConfig(form) {
+    const isNew = !form.id;
+    const url = isNew ? "/api/v2/alert-delivery-configs" : `/api/v2/alert-delivery-configs/${form.id}`;
+    const method = isNew ? "POST" : "PUT";
+    try {
+      const r = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        alert("Save failed: " + (err.detail || r.statusText));
+        return;
+      }
+      const saved = await r.json();
+      setConfigs((prev) =>
+        isNew ? [...prev, saved] : prev.map((c) => c.id === saved.id ? saved : c)
+      );
+      setEditTarget(null);
+    } catch { alert("Save failed — check backend connection."); }
+  }
+
+  return (
+    <div>
+      <PageHeader
+        title="Alert Delivery Configuration"
+        subtitle="Control where VoC alerts are sent per taxonomy category — Lark group channels and/or direct owner messages."
+      />
+
+      {/* Info banner */}
+      <div className={cardCls + " p-4 mb-5 text-[12.5px] text-gray-700 bg-gradient-to-r from-indigo-50/60 to-white flex items-start gap-3"}>
+        <svg className="w-4 h-4 mt-0.5 text-indigo-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+        </svg>
+        <div className="space-y-1">
+          <div className="font-semibold text-indigo-700">How alert delivery works</div>
+          <div>When a post crosses its category's <strong>Priority Threshold</strong>, VoC fires an alert. Each config below controls which channels receive it, subject to the cooldown period. <strong>Lark Group</strong> delivery uses a webhook URL; <strong>Owner DM</strong> requires Lark bot credentials on the server.</div>
+          <div className="text-[11.5px] text-gray-500 pt-0.5">
+            Owner assignment is configured in{" "}
+            <a href="#/settings" onClick={(e) => { e.preventDefault(); window.location.hash = "#/settings"; }} className="text-brand-500 font-semibold hover:underline">Settings → Routing Ownership</a>.
+            Alert thresholds are in{" "}
+            <a href="#/settings" onClick={(e) => { e.preventDefault(); window.location.hash = "#/settings"; }} className="text-brand-500 font-semibold hover:underline">Settings → Engagement Thresholds</a>.
+          </div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className={cardCls + " p-8 text-center text-gray-400 text-sm"}>Loading…</div>
+      ) : fetchErr ? (
+        <div className={cardCls + " p-8 text-center text-red-600 text-sm"}>{fetchErr}</div>
+      ) : (
+        <div className={cardCls + " overflow-hidden"}>
+          <table className="w-full border-collapse text-[13px]">
+            <thead>
+              <tr>
+                {["On", "Category", "Owner", "Group", "Channels", "Threshold", "Cooldown", "Last Triggered", "Status", ""].map((h) => (
+                  <th key={h} className="text-left text-[10.5px] uppercase tracking-wider text-gray-500 font-semibold px-3 py-2 border-b border-gray-200 bg-gray-50 whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(({ taxonomy: t, config: c }) => (
+                <tr key={t.key} className="align-middle hover:bg-gray-50/40">
+                  {/* Toggle */}
+                  <td className="px-3 py-3 border-b border-gray-100">
+                    {c ? (
+                      <button
+                        onClick={() => handleToggle(c)}
+                        className={"w-9 h-5 rounded-full transition-colors relative " + (c.enabled ? "bg-brand-500" : "bg-gray-300")}
+                        title={c.enabled ? "Click to disable" : "Click to enable"}>
+                        <span className={"absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform " + (c.enabled ? "translate-x-4" : "translate-x-0.5")} />
+                      </button>
+                    ) : (
+                      <span className="w-9 h-5 rounded-full bg-gray-100 inline-block" />
+                    )}
+                  </td>
+
+                  {/* Category */}
+                  <td className="px-3 py-3 border-b border-gray-100 font-semibold text-gray-900 whitespace-nowrap">
+                    <CategoryTag category={t.key} />
+                  </td>
+
+                  {/* Owner */}
+                  <td className="px-3 py-3 border-b border-gray-100 text-[12px] text-gray-700 whitespace-nowrap">
+                    {c && c.primary_owner_name
+                      ? <span className="font-medium">{c.primary_owner_name}</span>
+                      : <span className="text-gray-400 italic">—</span>}
+                  </td>
+
+                  {/* Group */}
+                  <td className="px-3 py-3 border-b border-gray-100 text-[12px] text-gray-700">
+                    {c && c.lark_group_name
+                      ? <span className="font-medium">{c.lark_group_name}</span>
+                      : <span className="text-gray-400 italic">—</span>}
+                  </td>
+
+                  {/* Channels */}
+                  <td className="px-3 py-3 border-b border-gray-100">
+                    {c && c.delivery_channels && c.delivery_channels.length > 0
+                      ? <div className="flex flex-wrap gap-1">
+                          {c.delivery_channels.map((ch) => (
+                            <span key={ch} className={"inline-block px-2 py-0.5 rounded-full text-[10.5px] font-semibold " + (ch === "lark_group" ? "bg-indigo-50 text-indigo-700" : "bg-amber-50 text-amber-700")}>
+                              {CHANNEL_LABELS[ch] || ch}
+                            </span>
+                          ))}
+                        </div>
+                      : <span className="text-gray-400 text-[12px] italic">None</span>}
+                  </td>
+
+                  {/* Threshold */}
+                  <td className="px-3 py-3 border-b border-gray-100 text-[12px]">
+                    {c ? (
+                      <span className={"font-semibold " + (c.priority_threshold === "High" ? "text-red-600" : c.priority_threshold === "Medium" ? "text-amber-600" : "text-green-700")}>
+                        {c.priority_threshold}
+                      </span>
+                    ) : <span className="text-gray-400">—</span>}
+                  </td>
+
+                  {/* Cooldown */}
+                  <td className="px-3 py-3 border-b border-gray-100 text-[12px] text-gray-700 whitespace-nowrap">
+                    {c ? `${c.cooldown_hours}h` : <span className="text-gray-400">—</span>}
+                  </td>
+
+                  {/* Last Triggered */}
+                  <td className="px-3 py-3 border-b border-gray-100 text-[12px] text-gray-500 whitespace-nowrap">
+                    {c && c.last_triggered_at
+                      ? new Date(c.last_triggered_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+                      : <span className="text-gray-400">Never</span>}
+                  </td>
+
+                  {/* Delivery status */}
+                  <td className="px-3 py-3 border-b border-gray-100">
+                    {c && c.last_delivery_status ? (
+                      <span className={"text-[11px] font-semibold px-2 py-0.5 rounded-full " + (c.last_delivery_status === "sent" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600")}>
+                        {c.last_delivery_status}
+                      </span>
+                    ) : <span className="text-gray-400 text-[12px]">—</span>}
+                    {/* Test result feedback */}
+                    {testState[c && c.id] && !testState[c.id].loading && (
+                      <div className={"text-[10.5px] mt-1 " + (testState[c.id].success ? "text-green-700" : "text-red-600")}>
+                        {testState[c.id].success ? "✓ " : "✗ "}{testState[c.id].message}
+                      </div>
+                    )}
+                    {testState[c && c.id] && testState[c.id].loading && (
+                      <div className="text-[10.5px] mt-1 text-gray-400">Sending…</div>
+                    )}
+                  </td>
+
+                  {/* Actions */}
+                  <td className="px-3 py-3 border-b border-gray-100 whitespace-nowrap">
+                    <div className="flex items-center gap-1.5">
+                      {c ? (
+                        <>
+                          <button onClick={() => setEditTarget({ config: c })}
+                            className="text-[11.5px] text-gray-600 hover:text-gray-900 px-2 py-1 rounded hover:bg-gray-100 font-medium">
+                            Edit
+                          </button>
+                          <button onClick={() => handleTestGroup(c.id)}
+                            className="text-[11.5px] text-indigo-600 hover:text-indigo-800 px-2 py-1 rounded hover:bg-indigo-50 font-medium"
+                            title="Send test message to Lark group">
+                            Test
+                          </button>
+                          <button onClick={() => handleDelete(c.id)}
+                            className="text-[11.5px] text-red-500 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50">
+                            ✕
+                          </button>
+                        </>
+                      ) : (
+                        <button onClick={() => setEditTarget({ taxonomy: t.key })}
+                          className="text-[11.5px] text-brand-500 hover:text-brand-700 px-2 py-1 rounded hover:bg-brand-50 font-semibold">
+                          + Configure
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Edit / Create modal */}
+      {editTarget && (
+        <AlertDeliveryModal
+          taxonomy={editTarget.taxonomy || (editTarget.config && editTarget.config.taxonomy)}
+          config={editTarget.config || null}
+          onClose={() => setEditTarget(null)}
+          onSave={handleSaveConfig}
+        />
+      )}
+    </div>
+  );
+}
+
+function AlertDeliveryModal({ taxonomy, config, onClose, onSave }) {
+  const isNew = !config;
+  const [form, setForm] = useP({
+    id:                      config ? config.id : undefined,
+    taxonomy:                taxonomy,
+    enabled:                 config ? config.enabled : true,
+    primary_owner_name:      config ? (config.primary_owner_name || "") : "",
+    primary_owner_lark_open_id: config ? (config.primary_owner_lark_open_id || "") : "",
+    lark_group_name:         config ? (config.lark_group_name || "") : "",
+    lark_group_webhook:      config ? (config.lark_group_webhook || "") : "",
+    delivery_channels:       config ? (config.delivery_channels || []) : [],
+    priority_threshold:      config ? config.priority_threshold : "High",
+    cooldown_hours:          config ? config.cooldown_hours : 24,
+  });
+  const [saving, setSaving] = useP(false);
+  const [dmTestResult, setDmTestResult] = useP(null);
+
+  function set(key, val) { setForm((p) => ({ ...p, [key]: val })); }
+
+  function toggleChannel(ch) {
+    const chs = form.delivery_channels;
+    set("delivery_channels", chs.includes(ch) ? chs.filter((c) => c !== ch) : [...chs, ch]);
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setSaving(true);
+    const payload = {
+      ...form,
+      primary_owner_name: form.primary_owner_name || null,
+      primary_owner_lark_open_id: form.primary_owner_lark_open_id || null,
+      lark_group_name: form.lark_group_name || null,
+      lark_group_webhook: form.lark_group_webhook || null,
+    };
+    await onSave(payload);
+    setSaving(false);
+  }
+
+  async function testOwnerDm() {
+    if (!form.id) return;
+    setDmTestResult({ loading: true });
+    try {
+      const r = await fetch(`/api/v2/alert-delivery-configs/${form.id}/test-owner-dm`, { method: "POST" });
+      const d = await r.json();
+      setDmTestResult(d);
+    } catch { setDmTestResult({ success: false, message: "Request failed" }); }
+  }
+
+  // Lock scroll behind modal
+  useE(() => {
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, []);
+
+  const taxLabel = VoC.TAXONOMY.find((t) => t.key === taxonomy);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-y-auto max-h-[90vh]">
+        <div className="px-6 pt-5 pb-4 border-b border-gray-200 flex items-center justify-between">
+          <div>
+            <div className="font-bold text-gray-900 text-[15px]">{isNew ? "Configure Alert Delivery" : "Edit Alert Delivery"}</div>
+            <div className="text-[12px] text-gray-500 mt-0.5">{taxLabel ? taxLabel.label : taxonomy}</div>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg font-bold">✕</button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5">
+          {/* Owner DM section */}
+          <div>
+            <div className="text-[11px] uppercase tracking-widest text-gray-400 font-bold mb-2.5">Owner Direct Message</div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[12px] font-semibold text-gray-700 mb-1">Owner Name</label>
+                <input value={form.primary_owner_name} onChange={(e) => set("primary_owner_name", e.target.value)}
+                  placeholder="e.g. Risk Team Lead"
+                  className="settings-input w-full" />
+              </div>
+              <div>
+                <label className="block text-[12px] font-semibold text-gray-700 mb-1">Lark Open ID</label>
+                <input value={form.primary_owner_lark_open_id} onChange={(e) => set("primary_owner_lark_open_id", e.target.value)}
+                  placeholder="ou_xxxxxxxxxxxxxxxx"
+                  className="settings-input w-full font-mono text-[12px]" />
+                <div className="text-[11px] text-gray-400 mt-1">Find in Lark Admin → Members. Owner DM requires bot credentials on the server.</div>
+              </div>
+              {!isNew && (
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={testOwnerDm}
+                    className="text-[12px] text-amber-600 hover:text-amber-800 px-3 py-1.5 rounded-lg border border-amber-200 hover:bg-amber-50 font-semibold">
+                    Test Owner DM
+                  </button>
+                  {dmTestResult && !dmTestResult.loading && (
+                    <span className={"text-[11.5px] " + (dmTestResult.success ? "text-green-700" : "text-gray-500")}>
+                      {dmTestResult.success ? "✓ " : "ℹ "}{dmTestResult.message}
+                    </span>
+                  )}
+                  {dmTestResult && dmTestResult.loading && <span className="text-[11.5px] text-gray-400">Sending…</span>}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Lark Group section */}
+          <div>
+            <div className="text-[11px] uppercase tracking-widest text-gray-400 font-bold mb-2.5">Lark Group Channel</div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[12px] font-semibold text-gray-700 mb-1">Group Name</label>
+                <input value={form.lark_group_name} onChange={(e) => set("lark_group_name", e.target.value)}
+                  placeholder="e.g. #voc-risk-alerts"
+                  className="settings-input w-full" />
+              </div>
+              <div>
+                <label className="block text-[12px] font-semibold text-gray-700 mb-1">Webhook URL</label>
+                <input type="password" value={form.lark_group_webhook} onChange={(e) => set("lark_group_webhook", e.target.value)}
+                  placeholder="https://open.larksuite.com/open-apis/bot/v2/hook/…"
+                  className="settings-input w-full font-mono text-[11.5px]" />
+                <div className="text-[11px] text-gray-400 mt-1">Custom bot webhook from Lark group settings. Value is stored securely and masked here.</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Delivery channels */}
+          <div>
+            <div className="text-[11px] uppercase tracking-widest text-gray-400 font-bold mb-2.5">Active Delivery Channels</div>
+            <div className="flex gap-4">
+              {[["lark_group", "Lark Group", "indigo"], ["owner_dm", "Owner DM", "amber"]].map(([ch, label, color]) => (
+                <label key={ch} className={"flex items-center gap-2 cursor-pointer px-3 py-2 rounded-lg border " + (form.delivery_channels.includes(ch) ? `border-${color}-300 bg-${color}-50` : "border-gray-200")}>
+                  <input type="checkbox" checked={form.delivery_channels.includes(ch)} onChange={() => toggleChannel(ch)}
+                    className="accent-brand-500 w-3.5 h-3.5" />
+                  <span className={"text-[12.5px] font-semibold " + (form.delivery_channels.includes(ch) ? `text-${color}-700` : "text-gray-600")}>{label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Threshold + Cooldown */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[12px] font-semibold text-gray-700 mb-1">Priority Threshold</label>
+              <select value={form.priority_threshold} onChange={(e) => set("priority_threshold", e.target.value)}
+                className="settings-input w-full">
+                {THRESHOLD_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <div className="text-[11px] text-gray-400 mt-1">Alert fires when post reaches this engagement level.</div>
+            </div>
+            <div>
+              <label className="block text-[12px] font-semibold text-gray-700 mb-1">Cooldown (hours)</label>
+              <input type="number" min="1" max="168" value={form.cooldown_hours} onChange={(e) => set("cooldown_hours", Number(e.target.value))}
+                className="settings-input w-full" />
+              <div className="text-[11px] text-gray-400 mt-1">Minimum gap between alerts for this category.</div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="pt-2 flex items-center justify-between border-t border-gray-100">
+            <button type="button" onClick={onClose} className="text-[13px] text-gray-500 hover:text-gray-700 font-medium">Cancel</button>
+            <button type="submit" disabled={saving}
+              className="bg-brand-500 text-white px-5 py-2 rounded-lg text-[13px] font-semibold hover:bg-brand-600 disabled:opacity-60">
+              {saving ? "Saving…" : isNew ? "Create Config" : "Save Changes"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// =========================================================
 //  CORRECTION LOG
 // =========================================================
 function CorrectionLogPage({ settings, log, clearLog }) {
@@ -1242,5 +1670,6 @@ function CorrectionLogPage({ settings, log, clearLog }) {
 
 Object.assign(window, {
   OverviewPage, MentionsPage, ActionQueuePage, TaxonomyPage,
-  RoutingMatrixPage, MethodologyPage, RationalePage, SettingsPage, CorrectionLogPage,
+  RoutingMatrixPage, MethodologyPage, RationalePage, SettingsPage,
+  AlertDeliveryPage, CorrectionLogPage,
 });
