@@ -20,6 +20,7 @@ dependencies = [
     "python-multipart>=0.0.9",
     "aiosmtplib>=3.0.0",
     "psycopg2-binary>=2.9.0",
+    "twikit>=2.1.0",
 ]
 
 [project.optional-dependencies]

@@ -67,11 +67,16 @@ async def crawl_twitter(lookback_hours: int = 24):
     """Crawl X/Twitter for Atome mentions and run full pipeline."""
     logger.info(f"Starting Twitter/X crawl (lookback={lookback_hours}h)")
 
-    # Priority: X Cookie API → Apify → Twitter API v2 → Brave Search
+    # Priority: twikit (cookie GraphQL) → X adaptive.json → Apify → Twitter API v2 → Brave
     all_posts: list[dict] = []
 
     if settings.x_twitter_cookies:
-        logger.info("Trying X internal API with cookie auth (preferred)")
+        logger.info("Trying twikit (cookie + GraphQL, preferred)")
+        all_posts = await _crawl_via_twikit(lookback_hours)
+        if not all_posts:
+            logger.warning("twikit returned 0 tweets, trying legacy adaptive.json")
+
+    if not all_posts and settings.x_twitter_cookies:
         all_posts = await _crawl_via_x_cookies(lookback_hours)
         if not all_posts:
             logger.warning("X cookie crawl returned 0 tweets, trying Apify")
@@ -104,7 +109,110 @@ async def crawl_twitter(lookback_hours: int = 24):
     await check_and_send_alerts()
 
 
-# ── X Cookie API (preferred — uses browser-equivalent auth) ─
+# ── twikit path (preferred — current GraphQL flow w/ transaction-id signing) ─
+
+
+# Search queries for twikit (its query parser handles OR / quotes natively)
+_TWIKIT_QUERIES = [
+    "Atome Philippines",
+    "Atome bayad",
+    "Atome (scam OR fraud OR complaint)",
+    "Atome (credit OR limit OR collection OR OTP)",
+    "Atome utang OR mabayaran",
+]
+
+
+def _twikit_cookies_dict() -> dict:
+    """Convert the stored cookie JSON array into the {name: value} dict twikit wants."""
+    import json as _json
+
+    try:
+        cookie_list = _json.loads(settings.x_twitter_cookies)
+    except Exception:
+        logger.error("X_TWITTER_COOKIES is not valid JSON")
+        return {}
+    return {c["name"]: c["value"] for c in cookie_list if c.get("name") and c.get("value")}
+
+
+async def _crawl_via_twikit(lookback_hours: int) -> list[dict]:
+    """Scrape X/Twitter via the twikit library using stored auth cookies.
+
+    twikit implements X's current GraphQL endpoints plus the x-client-transaction-id
+    anti-bot signing, so it succeeds where raw adaptive.json requests get 403'd.
+    """
+    try:
+        from twikit import Client
+    except ImportError:
+        logger.warning("twikit not installed — skipping")
+        return []
+
+    cookies = _twikit_cookies_dict()
+    if "auth_token" not in cookies or "ct0" not in cookies:
+        logger.warning("twikit: missing auth_token/ct0 in cookies — skipping")
+        return []
+
+    client = Client("en-US")
+    client.set_cookies(cookies)
+
+    cutoff = datetime.utcnow() - timedelta(hours=lookback_hours)
+    all_posts: list[dict] = []
+    seen_ids: set[str] = set()
+
+    for query in _TWIKIT_QUERIES:
+        try:
+            # product="Latest" → chronological recent results
+            results = await client.search_tweet(query, product="Latest")
+            count = 0
+            for tweet in results:
+                count += 1
+                tid = str(getattr(tweet, "id", "") or "")
+                if not tid or tid in seen_ids:
+                    continue
+
+                text = getattr(tweet, "text", "") or getattr(tweet, "full_text", "") or ""
+                user = getattr(tweet, "user", None)
+                author = getattr(user, "screen_name", "") if user else ""
+
+                created = _parse_twitter_date(getattr(tweet, "created_at", "") or "")
+                if created < cutoff:
+                    continue
+
+                if is_too_short(text):
+                    continue
+                if not mentions_brand(text):
+                    continue
+                if is_official_account(author):
+                    continue
+                if is_noise_account(author):
+                    continue
+                if not is_ph_relevant(text):
+                    continue
+
+                url = f"https://x.com/{author}/status/{tid}" if author else f"https://x.com/i/status/{tid}"
+                seen_ids.add(tid)
+                all_posts.append({
+                    "platform": "twitter",
+                    "brand": "atome_ph",
+                    "post_id": tid,
+                    "url": url,
+                    "author_handle": author,
+                    "content_text": text,
+                    "created_at": created,
+                    "engagement_likes": getattr(tweet, "favorite_count", 0) or 0,
+                    "engagement_replies": getattr(tweet, "reply_count", 0) or 0,
+                    "engagement_reposts": getattr(tweet, "retweet_count", 0) or 0,
+                    "raw_json": None,
+                })
+            logger.info("twikit search [%s]: %d raw, %d kept", query, count, len(all_posts))
+            await asyncio.sleep(3)  # polite pacing to avoid rate limits
+        except Exception:
+            logger.exception("twikit search failed for query: %s", query)
+
+    logger.info("twikit: %d posts after filtering", len(all_posts))
+    return all_posts
+
+
+# ── X Cookie API (legacy fallback — adaptive.json, usually 403'd now) ─
 
 
 # X web-app Bearer token (used by x.com frontend — public, not a developer key)
