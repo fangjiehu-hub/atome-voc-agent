@@ -112,7 +112,7 @@ _X_APP_BEARER = (
     "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I7BeIgLqn38"
     "%3DUMzb5Yq6K5Z8XqASS7EgYZiaNr5z0LrjbkUKKSCp%2BzEHQV5vJl"
 )
-_X_SEARCH_URL = "https://api.twitter.com/2/search/adaptive.json"
+_X_SEARCH_URL = "https://twitter.com/i/api/2/search/adaptive.json"
 
 # Search queries — same as TWITTER_API_QUERIES but used with cookie auth
 _X_COOKIE_QUERIES = [
