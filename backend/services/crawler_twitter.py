@@ -1,4 +1,4 @@
-"""X/Twitter crawler — Apify (preferred) → Twitter API v2 free tier → Brave Search."""
+"""X/Twitter crawler — X Cookie API (preferred) → Apify → Twitter API v2 → Brave Search."""
 
 import asyncio
 import logging
@@ -67,10 +67,16 @@ async def crawl_twitter(lookback_hours: int = 24):
     """Crawl X/Twitter for Atome mentions and run full pipeline."""
     logger.info(f"Starting Twitter/X crawl (lookback={lookback_hours}h)")
 
-    # Priority: Apify → Twitter API v2 free → Brave Search
+    # Priority: X Cookie API → Apify → Twitter API v2 → Brave Search
     all_posts: list[dict] = []
 
-    if settings.apify_api_token:
+    if settings.x_twitter_cookies:
+        logger.info("Trying X internal API with cookie auth (preferred)")
+        all_posts = await _crawl_via_x_cookies(lookback_hours)
+        if not all_posts:
+            logger.warning("X cookie crawl returned 0 tweets, trying Apify")
+
+    if not all_posts and settings.apify_api_token:
         all_posts = await _crawl_via_apify(lookback_hours)
         if not all_posts:
             logger.warning("Apify returned 0 tweets, trying free alternatives")
@@ -85,8 +91,8 @@ async def crawl_twitter(lookback_hours: int = 24):
 
     if not all_posts:
         logger.warning(
-            "No Twitter data source available. Set TWITTER_BEARER_TOKEN (free at "
-            "developer.twitter.com) or APIFY_API_TOKEN to enable Twitter crawling."
+            "No Twitter data source available. Set X_TWITTER_COOKIES or "
+            "APIFY_API_TOKEN to enable Twitter crawling."
         )
         return
 
@@ -98,7 +104,152 @@ async def crawl_twitter(lookback_hours: int = 24):
     await check_and_send_alerts()
 
 
-# ── Apify path (preferred) ──────────────────────────────────
+# ── X Cookie API (preferred — uses browser-equivalent auth) ─
+
+
+# X web-app Bearer token (used by x.com frontend — public, not a developer key)
+_X_APP_BEARER = (
+    "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I7BeIgLqn38"
+    "%3DUMzb5Yq6K5Z8XqASS7EgYZiaNr5z0LrjbkUKKSCp%2BzEHQV5vJl"
+)
+_X_SEARCH_URL = "https://api.twitter.com/2/search/adaptive.json"
+
+# Search queries — same as TWITTER_API_QUERIES but used with cookie auth
+_X_COOKIE_QUERIES = [
+    "Atome Philippines",
+    "Atome bayad",
+    "Atome scam OR fraud Philippines",
+    "Atome credit limit Philippines",
+    "Atome collection OTP",
+]
+
+
+async def _crawl_via_x_cookies(lookback_hours: int) -> list[dict]:
+    """Scrape X/Twitter using the user's browser cookies + x.com's own Bearer token.
+
+    This mimics what the logged-in X web app does, bypassing the login wall that
+    blocks unauthenticated scraping.  Works as long as the auth_token cookie is valid.
+    """
+    import json as _json
+
+    try:
+        cookie_list: list[dict] = _json.loads(settings.x_twitter_cookies)
+    except Exception:
+        logger.error("X_TWITTER_COOKIES is not valid JSON — skipping cookie auth")
+        return []
+
+    # Build cookie string and extract CSRF token
+    cookie_str = "; ".join(
+        f"{c['name']}={c['value']}" for c in cookie_list if c.get("name") and c.get("value")
+    )
+    ct0 = next((c["value"] for c in cookie_list if c.get("name") == "ct0"), "")
+    auth_token = next((c["value"] for c in cookie_list if c.get("name") == "auth_token"), "")
+
+    if not auth_token:
+        logger.warning("No auth_token in X cookies — skipping cookie auth")
+        return []
+
+    logger.info("X cookie auth: auth_token present, ct0 length=%d", len(ct0))
+
+    headers = {
+        "Authorization": f"Bearer {_X_APP_BEARER}",
+        "x-csrf-token": ct0,
+        "Cookie": cookie_str,
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://x.com/",
+        "x-twitter-active-user": "yes",
+        "x-twitter-auth-type": "OAuth2Session",
+        "x-twitter-client-language": "en",
+    }
+
+    cutoff = datetime.utcnow() - timedelta(hours=lookback_hours)
+    all_posts: list[dict] = []
+    seen_ids: set[str] = set()
+
+    async with httpx.AsyncClient(timeout=30.0, headers=headers, follow_redirects=True) as client:
+        for query in _X_COOKIE_QUERIES:
+            try:
+                params = {
+                    "q": query,
+                    "tweet_mode": "extended",
+                    "count": "100",
+                    "result_type": "recent",
+                    "lang": "en",
+                }
+                resp = await client.get(_X_SEARCH_URL, params=params)
+
+                if resp.status_code == 401:
+                    logger.warning("X cookie auth 401 — cookies may be expired")
+                    break
+                if resp.status_code == 429:
+                    logger.warning("X cookie auth rate limited — pausing 30s")
+                    await asyncio.sleep(30)
+                    continue
+
+                resp.raise_for_status()
+                data = resp.json()
+
+                # Response shape: { globalObjects: { tweets: {...}, users: {...} } }
+                tweets_map = data.get("globalObjects", {}).get("tweets", {})
+                users_map = data.get("globalObjects", {}).get("users", {})
+
+                logger.info("X cookie search [%s]: %d tweets", query, len(tweets_map))
+
+                for tweet_id, tweet in tweets_map.items():
+                    if tweet_id in seen_ids:
+                        continue
+                    try:
+                        text = tweet.get("full_text", "") or tweet.get("text", "")
+                        user_id = str(tweet.get("user_id_str", ""))
+                        user = users_map.get(user_id, {})
+                        author = user.get("screen_name", "")
+
+                        created_str = tweet.get("created_at", "")
+                        created = _parse_twitter_date(created_str)
+                        if created < cutoff:
+                            continue
+
+                        if is_too_short(text):
+                            continue
+                        if not mentions_brand(text):
+                            continue
+                        if is_official_account(author):
+                            continue
+                        if is_noise_account(author):
+                            continue
+                        if not is_ph_relevant(text):
+                            continue
+
+                        url = f"https://x.com/{author}/status/{tweet_id}" if author else f"https://x.com/i/status/{tweet_id}"
+                        seen_ids.add(tweet_id)
+                        all_posts.append({
+                            "platform": "twitter",
+                            "brand": "atome_ph",
+                            "post_id": tweet_id,
+                            "url": url,
+                            "author_handle": author,
+                            "content_text": text,
+                            "created_at": created,
+                            "engagement_likes": tweet.get("favorite_count", 0),
+                            "engagement_replies": tweet.get("reply_count", 0),
+                            "engagement_reposts": tweet.get("retweet_count", 0),
+                            "raw_json": tweet,
+                        })
+                    except Exception:
+                        logger.exception("Failed to parse X cookie tweet %s", tweet_id)
+
+                await asyncio.sleep(2)  # polite pacing
+
+            except Exception:
+                logger.exception("X cookie search failed for query: %s", query)
+
+    logger.info("X cookie API: %d posts after filtering", len(all_posts))
+    return all_posts
+
+
+# ── Apify path ───────────────────────────────────────────────
 
 
 async def _crawl_via_apify(lookback_hours: int) -> list[dict]:
@@ -119,20 +270,13 @@ async def _crawl_via_apify(lookback_hours: int) -> list[dict]:
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         try:
-            # Build actor input — inject cookies if configured for authenticated scraping
-            import json as _json
+            # Build actor input
             actor_input: dict = {
                 "startUrls": search_urls,
                 "maxItems": max_items,
                 "addUserInfo": False,
                 "scrapeTweetReplies": False,
             }
-            if settings.x_twitter_cookies:
-                try:
-                    actor_input["cookies"] = _json.loads(settings.x_twitter_cookies)
-                    logger.info("Apify: injecting X auth cookies (%d cookies)", len(actor_input["cookies"]))
-                except Exception:
-                    logger.warning("X_TWITTER_COOKIES is set but failed to parse as JSON — ignored")
 
             # Start the Apify actor run
             run_url = f"{APIFY_BASE}/acts/{APIFY_TWEET_ACTOR_ID}/runs"
