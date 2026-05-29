@@ -119,17 +119,27 @@ async def _crawl_via_apify(lookback_hours: int) -> list[dict]:
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         try:
+            # Build actor input — inject cookies if configured for authenticated scraping
+            import json as _json
+            actor_input: dict = {
+                "startUrls": search_urls,
+                "maxItems": max_items,
+                "addUserInfo": False,
+                "scrapeTweetReplies": False,
+            }
+            if settings.x_twitter_cookies:
+                try:
+                    actor_input["cookies"] = _json.loads(settings.x_twitter_cookies)
+                    logger.info("Apify: injecting X auth cookies (%d cookies)", len(actor_input["cookies"]))
+                except Exception:
+                    logger.warning("X_TWITTER_COOKIES is set but failed to parse as JSON — ignored")
+
             # Start the Apify actor run
             run_url = f"{APIFY_BASE}/acts/{APIFY_TWEET_ACTOR_ID}/runs"
             resp = await client.post(
                 run_url,
                 params={"token": settings.apify_api_token},
-                json={
-                    "startUrls": search_urls,
-                    "maxItems": max_items,
-                    "addUserInfo": False,
-                    "scrapeTweetReplies": False,
-                },
+                json=actor_input,
             )
             resp.raise_for_status()
             run_data = resp.json().get("data", {})

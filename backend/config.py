@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     reddit_client_id: str = ""       # Free Reddit OAuth app — create at reddit.com/prefs/apps
     reddit_client_secret: str = ""
     twitter_bearer_token: str = ""   # Free Twitter API v2 — create at developer.twitter.com
+    x_twitter_cookies: str = ""      # JSON array of x.com cookies for Apify authenticated scraping
 
     # Alerting
     slack_webhook_url: str = ""
