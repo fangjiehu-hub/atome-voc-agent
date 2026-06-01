@@ -23,6 +23,8 @@ class AppSettings(Base):
     engagement_thresholds: Mapped[dict] = mapped_column(JSONB, nullable=False)
     sensitive_keywords: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, default=list)
     ownership: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    # secondary_ownership: CC teams per category — server-global (was localStorage-only)
+    secondary_ownership: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     default_market: Mapped[str] = mapped_column(String(20), default="PH", server_default="PH")
     default_source: Mapped[str] = mapped_column(String(50), default="X + Reddit", server_default="X + Reddit")
     default_time_window: Mapped[str] = mapped_column(String(10), default="7d", server_default="7d")

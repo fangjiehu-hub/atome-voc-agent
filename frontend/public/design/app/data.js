@@ -184,29 +184,23 @@
   }
 
   function loadSettings() {
+    // Server is the single source of truth for all shared config (ownership,
+    // secondaryOwnership, thresholds, keywords, display defaults, alert schedule).
+    // Only mentionOverrides remains browser-local (not yet server-backed).
     const base = buildDefaultSettings();
     try {
       const raw = localStorage.getItem(SETTINGS_KEY);
-      if (!raw) return base;
-      const parsed = JSON.parse(raw);
-      const market = Array.isArray(parsed.defaultMarket) ? parsed.defaultMarket
-        : (parsed.defaultMarket ? [parsed.defaultMarket] : base.defaultMarket);
-      const source = Array.isArray(parsed.defaultSource) ? parsed.defaultSource
-        : (parsed.defaultSource ? [parsed.defaultSource] : base.defaultSource);
-      return {
-        ...base, ...parsed,
-        engagementThresholds: { ...base.engagementThresholds, ...(parsed.engagementThresholds || {}) },
-        ownership: { ...base.ownership, ...(parsed.ownership || {}) },
-        secondaryOwnership: { ...base.secondaryOwnership, ...(parsed.secondaryOwnership || {}) },
-        mentionOverrides: parsed.mentionOverrides || {},
-        defaultMarket: market,
-        defaultSource: source,
-      };
-    } catch (e) { return base; }
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        base.mentionOverrides = parsed.mentionOverrides || {};
+      }
+    } catch (e) { /* ignore corrupt cache */ }
+    return base;
   }
   function saveSettings(s) {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
-    // Mirror server-side asynchronously (best effort — UI doesn't block on it)
+    // Cache the browser-local part (mentionOverrides) only.
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ mentionOverrides: s.mentionOverrides || {} }));
+    // Persist all shared config to the server — this is the global source of truth.
     fetch(API_BASE + "/api/v2/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -226,7 +220,10 @@
         weeklySummaryTime:     s.weeklySummaryTime,
         weeklySummaryTimezone: s.weeklySummaryTimezone,
       }),
-    }).catch(() => {});
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (data) SERVER_SETTINGS = data; })  // keep in-session cache fresh
+      .catch(() => {});
   }
   function resetSettings() {
     localStorage.removeItem(SETTINGS_KEY);

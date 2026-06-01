@@ -153,6 +153,7 @@ class SettingsResponse(BaseModel):
     engagementThresholds: dict
     sensitiveKeywords: list[str]
     ownership: dict[str, str]
+    secondaryOwnership: dict[str, list[str]]
     defaultMarket: str
     defaultSource: str
     defaultTimeWindow: str
@@ -171,6 +172,7 @@ class SettingsPatch(BaseModel):
     engagementThresholds: dict | None = None
     sensitiveKeywords: list[str] | None = None
     ownership: dict[str, str] | None = None
+    secondaryOwnership: dict[str, list[str]] | None = None
     defaultMarket: str | None = None
     defaultSource: str | None = None
     defaultTimeWindow: str | None = None
@@ -191,6 +193,7 @@ async def get_settings(db: AsyncSession = Depends(get_db)):
         engagementThresholds=s.engagement_thresholds,
         sensitiveKeywords=list(s.sensitive_keywords or []),
         ownership=s.ownership or {},
+        secondaryOwnership=s.secondary_ownership or {},
         defaultMarket=s.default_market,
         defaultSource=s.default_source,
         defaultTimeWindow=s.default_time_window,
@@ -220,6 +223,8 @@ async def update_settings(patch: SettingsPatch, db: AsyncSession = Depends(get_d
         s.sensitive_keywords = [k.strip() for k in patch.sensitiveKeywords if k.strip()]
     if patch.ownership is not None:
         s.ownership = patch.ownership
+    if patch.secondaryOwnership is not None:
+        s.secondary_ownership = patch.secondaryOwnership
     if patch.defaultMarket is not None:
         s.default_market = patch.defaultMarket
     if patch.defaultSource is not None:
