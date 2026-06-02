@@ -176,6 +176,10 @@ def _map_record(fields: dict) -> dict | None:
         "category":           category,
         "summary":            _text_value(fields.get("AI Summary")) or None,
         "is_negative":        is_negative,
+        # Octo Agent already did the AI analysis (category / summary / sentiment /
+        # severity), so mark these as annotated to skip our LLM re-annotation and
+        # make them visible in the mentions list immediately.
+        "annotated_at":       datetime.utcnow(),
         "raw_json":           None,
     }
 
