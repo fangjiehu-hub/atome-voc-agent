@@ -1175,7 +1175,7 @@ function SettingField({ label, hint, children }) {
 //  ALERT DELIVERY CONFIGURATION
 // =========================================================
 
-const CHANNEL_LABELS = { lark_group: "Lark Group", owner_dm: "Owner DM" };
+const CHANNEL_LABELS = { lark_group: "Lark Group", email: "Email" };
 const THRESHOLD_OPTIONS = ["Low", "Medium", "High"];
 
 function AlertDeliveryPage({ settings, navigate, updateSettings }) {
@@ -1260,12 +1260,21 @@ function AlertDeliveryPage({ settings, navigate, updateSettings }) {
   }
 
   async function handleTestGroup(id) {
-    setTestState((p) => ({ ...p, [id]: { loading: true } }));
+    setTestState((p) => ({ ...p, [`${id}_lark`]: { loading: true } }));
     try {
       const r = await fetch(`/api/v2/alert-delivery-configs/${id}/test-group`, { method: "POST" });
       const d = await r.json();
-      setTestState((p) => ({ ...p, [id]: d }));
-    } catch { setTestState((p) => ({ ...p, [id]: { success: false, message: "Request failed" } })); }
+      setTestState((p) => ({ ...p, [`${id}_lark`]: d }));
+    } catch { setTestState((p) => ({ ...p, [`${id}_lark`]: { success: false, message: "Request failed" } })); }
+  }
+
+  async function handleTestEmail(id) {
+    setTestState((p) => ({ ...p, [`${id}_email`]: { loading: true } }));
+    try {
+      const r = await fetch(`/api/v2/alert-delivery-configs/${id}/test-email`, { method: "POST" });
+      const d = await r.json();
+      setTestState((p) => ({ ...p, [`${id}_email`]: d }));
+    } catch { setTestState((p) => ({ ...p, [`${id}_email`]: { success: false, message: "Request failed" } })); }
   }
 
   async function handleSaveConfig(form) {
@@ -1401,7 +1410,7 @@ function AlertDeliveryPage({ settings, navigate, updateSettings }) {
         </svg>
         <div className="space-y-1">
           <div className="font-semibold text-indigo-700">How alert delivery works</div>
-          <div>When a post crosses its category's <strong>Priority Threshold</strong>, VoC fires an alert. Each config below controls which channels receive it, subject to the cooldown period. <strong>Lark Group</strong> delivery uses a webhook URL; <strong>Owner DM</strong> requires Lark bot credentials on the server.</div>
+          <div>When a post crosses its category's <strong>Priority Threshold</strong>, VoC fires an alert. Each config below controls which channels receive it, subject to the cooldown period. <strong>Lark Group</strong> uses a webhook URL. <strong>Email</strong> sends to the configured address per category.</div>
           <div className="text-[11.5px] text-gray-500 pt-0.5">
             Owner assignment is configured in{" "}
             <a href="#/settings" onClick={(e) => { e.preventDefault(); window.location.hash = "#/settings"; }} className="text-brand-500 font-semibold hover:underline">Settings → Routing Ownership</a>.
@@ -1420,7 +1429,7 @@ function AlertDeliveryPage({ settings, navigate, updateSettings }) {
           <table className="w-full border-collapse text-[13px]">
             <thead>
               <tr>
-                {["On", "Category", "Owner", "Group", "Channels", "Threshold", "Cooldown", "Last Triggered", "Status", ""].map((h) => (
+                {["On", "Category", "Lark Group", "Email", "Channels", "Threshold", "Cooldown", "Last Triggered", "Status", ""].map((h) => (
                   <th key={h} className="text-left text-[10.5px] uppercase tracking-wider text-gray-500 font-semibold px-3 py-2 border-b border-gray-200 bg-gray-50 whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -1447,17 +1456,17 @@ function AlertDeliveryPage({ settings, navigate, updateSettings }) {
                     <CategoryTag category={t.key} />
                   </td>
 
-                  {/* Owner */}
-                  <td className="px-3 py-3 border-b border-gray-100 text-[12px] text-gray-700 whitespace-nowrap">
-                    {c && c.primary_owner_name
-                      ? <span className="font-medium">{c.primary_owner_name}</span>
-                      : <span className="text-gray-400 italic">—</span>}
-                  </td>
-
-                  {/* Group */}
+                  {/* Lark Group */}
                   <td className="px-3 py-3 border-b border-gray-100 text-[12px] text-gray-700">
                     {c && c.lark_group_name
                       ? <span className="font-medium">{c.lark_group_name}</span>
+                      : <span className="text-gray-400 italic">—</span>}
+                  </td>
+
+                  {/* Email */}
+                  <td className="px-3 py-3 border-b border-gray-100 text-[12px] text-gray-700">
+                    {c && c.email_address
+                      ? <span className="font-medium">{c.email_address}</span>
                       : <span className="text-gray-400 italic">—</span>}
                   </td>
 
@@ -1466,7 +1475,7 @@ function AlertDeliveryPage({ settings, navigate, updateSettings }) {
                     {c && c.delivery_channels && c.delivery_channels.length > 0
                       ? <div className="flex flex-wrap gap-1">
                           {c.delivery_channels.map((ch) => (
-                            <span key={ch} className={"inline-block px-2 py-0.5 rounded-full text-[10.5px] font-semibold " + (ch === "lark_group" ? "bg-indigo-50 text-indigo-700" : "bg-amber-50 text-amber-700")}>
+                            <span key={ch} className={"inline-block px-2 py-0.5 rounded-full text-[10.5px] font-semibold " + (ch === "lark_group" ? "bg-indigo-50 text-indigo-700" : "bg-green-50 text-green-700")}>
                               {CHANNEL_LABELS[ch] || ch}
                             </span>
                           ))}
@@ -1495,38 +1504,48 @@ function AlertDeliveryPage({ settings, navigate, updateSettings }) {
                       : <span className="text-gray-400">Never</span>}
                   </td>
 
-                  {/* Delivery status */}
-                  <td className="px-3 py-3 border-b border-gray-100">
+                  {/* Delivery status + test feedback */}
+                  <td className="px-3 py-3 border-b border-gray-100 min-w-[120px]">
                     {c && c.last_delivery_status ? (
                       <span className={"text-[11px] font-semibold px-2 py-0.5 rounded-full " + (c.last_delivery_status === "sent" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600")}>
                         {c.last_delivery_status}
                       </span>
                     ) : <span className="text-gray-400 text-[12px]">—</span>}
-                    {/* Test result feedback */}
-                    {testState[c && c.id] && !testState[c.id].loading && (
-                      <div className={"text-[10.5px] mt-1 " + (testState[c.id].success ? "text-green-700" : "text-red-600")}>
-                        {testState[c.id].success ? "✓ " : "✗ "}{testState[c.id].message}
+                    {c && testState[`${c.id}_lark`] && (
+                      <div className={"text-[10.5px] mt-1 " + (testState[`${c.id}_lark`].loading ? "text-gray-400" : testState[`${c.id}_lark`].success ? "text-indigo-700" : "text-red-600")}>
+                        {testState[`${c.id}_lark`].loading ? "Sending Lark…" : (testState[`${c.id}_lark`].success ? "✓ Lark sent" : "✗ " + testState[`${c.id}_lark`].message)}
                       </div>
                     )}
-                    {testState[c && c.id] && testState[c.id].loading && (
-                      <div className="text-[10.5px] mt-1 text-gray-400">Sending…</div>
+                    {c && testState[`${c.id}_email`] && (
+                      <div className={"text-[10.5px] mt-1 " + (testState[`${c.id}_email`].loading ? "text-gray-400" : testState[`${c.id}_email`].success ? "text-green-700" : "text-red-600")}>
+                        {testState[`${c.id}_email`].loading ? "Sending email…" : (testState[`${c.id}_email`].success ? "✓ Email sent" : "✗ " + testState[`${c.id}_email`].message)}
+                      </div>
                     )}
                   </td>
 
                   {/* Actions */}
                   <td className="px-3 py-3 border-b border-gray-100 whitespace-nowrap">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1">
                       {c ? (
                         <>
                           <button onClick={() => setEditTarget({ config: c })}
                             className="text-[11.5px] text-gray-600 hover:text-gray-900 px-2 py-1 rounded hover:bg-gray-100 font-medium">
                             Edit
                           </button>
-                          <button onClick={() => handleTestGroup(c.id)}
-                            className="text-[11.5px] text-indigo-600 hover:text-indigo-800 px-2 py-1 rounded hover:bg-indigo-50 font-medium"
-                            title="Send test message to Lark group">
-                            Test
-                          </button>
+                          {c.lark_group_webhook && (
+                            <button onClick={() => handleTestGroup(c.id)}
+                              className="text-[11.5px] text-indigo-600 hover:text-indigo-800 px-2 py-1 rounded hover:bg-indigo-50 font-medium"
+                              title="Test Lark group">
+                              Test Lark
+                            </button>
+                          )}
+                          {c.email_address && (
+                            <button onClick={() => handleTestEmail(c.id)}
+                              className="text-[11.5px] text-green-700 hover:text-green-900 px-2 py-1 rounded hover:bg-green-50 font-medium"
+                              title="Test email delivery">
+                              Test Email
+                            </button>
+                          )}
                           <button onClick={() => handleDelete(c.id)}
                             className="text-[11.5px] text-red-500 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50">
                             ✕
@@ -1568,14 +1587,15 @@ function AlertDeliveryModal({ taxonomy, config, onClose, onSave }) {
     enabled:                 config ? config.enabled : true,
     primary_owner_name:      config ? (config.primary_owner_name || "") : "",
     primary_owner_lark_open_id: config ? (config.primary_owner_lark_open_id || "") : "",
-    lark_group_name:         config ? (config.lark_group_name || "") : "",
-    lark_group_webhook:      config ? (config.lark_group_webhook || "") : "",
-    delivery_channels:       config ? (config.delivery_channels || []) : [],
-    priority_threshold:      config ? config.priority_threshold : "High",
-    cooldown_hours:          config ? config.cooldown_hours : 24,
+    lark_group_name:    config ? (config.lark_group_name || "") : "",
+    lark_group_webhook: config ? (config.lark_group_webhook || "") : "",
+    email_address:      config ? (config.email_address || "") : "",
+    delivery_channels:  config ? (config.delivery_channels || []) : [],
+    priority_threshold: config ? config.priority_threshold : "High",
+    cooldown_hours:     config ? config.cooldown_hours : 24,
   });
   const [saving, setSaving] = useP(false);
-  const [dmTestResult, setDmTestResult] = useP(null);
+  const [emailTestResult, setEmailTestResult] = useP(null);
 
   function set(key, val) { setForm((p) => ({ ...p, [key]: val })); }
 
@@ -1589,26 +1609,24 @@ function AlertDeliveryModal({ taxonomy, config, onClose, onSave }) {
     setSaving(true);
     const payload = {
       ...form,
-      primary_owner_name: form.primary_owner_name || null,
-      primary_owner_lark_open_id: form.primary_owner_lark_open_id || null,
-      lark_group_name: form.lark_group_name || null,
+      lark_group_name:    form.lark_group_name || null,
       lark_group_webhook: form.lark_group_webhook || null,
+      email_address:      form.email_address || null,
     };
     await onSave(payload);
     setSaving(false);
   }
 
-  async function testOwnerDm() {
+  async function handleTestEmailModal() {
     if (!form.id) return;
-    setDmTestResult({ loading: true });
+    setEmailTestResult({ loading: true });
     try {
-      const r = await fetch(`/api/v2/alert-delivery-configs/${form.id}/test-owner-dm`, { method: "POST" });
+      const r = await fetch(`/api/v2/alert-delivery-configs/${form.id}/test-email`, { method: "POST" });
       const d = await r.json();
-      setDmTestResult(d);
-    } catch { setDmTestResult({ success: false, message: "Request failed" }); }
+      setEmailTestResult(d);
+    } catch { setEmailTestResult({ success: false, message: "Request failed" }); }
   }
 
-  // Lock scroll behind modal
   useE(() => {
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = ""; };
@@ -1629,40 +1647,6 @@ function AlertDeliveryModal({ taxonomy, config, onClose, onSave }) {
         </div>
 
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5">
-          {/* Owner DM section */}
-          <div>
-            <div className="text-[11px] uppercase tracking-widest text-gray-400 font-bold mb-2.5">Owner Direct Message</div>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-[12px] font-semibold text-gray-700 mb-1">Owner Name</label>
-                <input value={form.primary_owner_name} onChange={(e) => set("primary_owner_name", e.target.value)}
-                  placeholder="e.g. Risk Team Lead"
-                  className="settings-input w-full" />
-              </div>
-              <div>
-                <label className="block text-[12px] font-semibold text-gray-700 mb-1">Lark Open ID</label>
-                <input value={form.primary_owner_lark_open_id} onChange={(e) => set("primary_owner_lark_open_id", e.target.value)}
-                  placeholder="ou_xxxxxxxxxxxxxxxx"
-                  className="settings-input w-full font-mono text-[12px]" />
-                <div className="text-[11px] text-gray-400 mt-1">Find in Lark Admin → Members. Owner DM requires bot credentials on the server.</div>
-              </div>
-              {!isNew && (
-                <div className="flex items-center gap-2">
-                  <button type="button" onClick={testOwnerDm}
-                    className="text-[12px] text-amber-600 hover:text-amber-800 px-3 py-1.5 rounded-lg border border-amber-200 hover:bg-amber-50 font-semibold">
-                    Test Owner DM
-                  </button>
-                  {dmTestResult && !dmTestResult.loading && (
-                    <span className={"text-[11.5px] " + (dmTestResult.success ? "text-green-700" : "text-gray-500")}>
-                      {dmTestResult.success ? "✓ " : "ℹ "}{dmTestResult.message}
-                    </span>
-                  )}
-                  {dmTestResult && dmTestResult.loading && <span className="text-[11.5px] text-gray-400">Sending…</span>}
-                </div>
-              )}
-            </div>
-          </div>
-
           {/* Lark Group section */}
           <div>
             <div className="text-[11px] uppercase tracking-widest text-gray-400 font-bold mb-2.5">Lark Group Channel</div>
@@ -1678,8 +1662,36 @@ function AlertDeliveryModal({ taxonomy, config, onClose, onSave }) {
                 <input type="password" value={form.lark_group_webhook} onChange={(e) => set("lark_group_webhook", e.target.value)}
                   placeholder="https://open.larksuite.com/open-apis/bot/v2/hook/…"
                   className="settings-input w-full font-mono text-[11.5px]" />
-                <div className="text-[11px] text-gray-400 mt-1">Custom bot webhook from Lark group settings. Value is stored securely and masked here.</div>
+                <div className="text-[11px] text-gray-400 mt-1">Custom bot webhook from Lark group settings. Stored securely and masked here.</div>
               </div>
+            </div>
+          </div>
+
+          {/* Email section */}
+          <div>
+            <div className="text-[11px] uppercase tracking-widest text-gray-400 font-bold mb-2.5">Email</div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[12px] font-semibold text-gray-700 mb-1">Recipient Email Address</label>
+                <input type="email" value={form.email_address} onChange={(e) => set("email_address", e.target.value)}
+                  placeholder="e.g. risk-team@advancegroup.com"
+                  className="settings-input w-full" />
+                <div className="text-[11px] text-gray-400 mt-1">Alert emails for this category will be sent to this address.</div>
+              </div>
+              {!isNew && form.email_address && (
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={handleTestEmailModal}
+                    className="text-[12px] text-green-700 hover:text-green-900 px-3 py-1.5 rounded-lg border border-green-200 hover:bg-green-50 font-semibold">
+                    Send Test Email
+                  </button>
+                  {emailTestResult && !emailTestResult.loading && (
+                    <span className={"text-[11.5px] " + (emailTestResult.success ? "text-green-700" : "text-red-600")}>
+                      {emailTestResult.success ? "✓ " : "✗ "}{emailTestResult.message}
+                    </span>
+                  )}
+                  {emailTestResult && emailTestResult.loading && <span className="text-[11.5px] text-gray-400">Sending…</span>}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1687,7 +1699,7 @@ function AlertDeliveryModal({ taxonomy, config, onClose, onSave }) {
           <div>
             <div className="text-[11px] uppercase tracking-widest text-gray-400 font-bold mb-2.5">Active Delivery Channels</div>
             <div className="flex gap-4">
-              {[["lark_group", "Lark Group", "indigo"], ["owner_dm", "Owner DM", "amber"]].map(([ch, label, color]) => (
+              {[["lark_group", "Lark Group", "indigo"], ["email", "Email", "green"]].map(([ch, label, color]) => (
                 <label key={ch} className={"flex items-center gap-2 cursor-pointer px-3 py-2 rounded-lg border " + (form.delivery_channels.includes(ch) ? `border-${color}-300 bg-${color}-50` : "border-gray-200")}>
                   <input type="checkbox" checked={form.delivery_channels.includes(ch)} onChange={() => toggleChannel(ch)}
                     className="accent-brand-500 w-3.5 h-3.5" />

@@ -95,6 +95,13 @@ async def generate_and_send_daily_alert() -> None:
             await db.commit()
             return
 
+        from backend.services.email_sender import build_alert_html, send_alert_email
+
+        email_configs = [
+            c for c in configs
+            if c.delivery_channels and "email" in c.delivery_channels and c.email_address
+        ]
+
         for config in lark_group_configs:
             alert_msg = AlertMessage(
                 alert_type="daily_alert",
@@ -108,7 +115,7 @@ async def generate_and_send_daily_alert() -> None:
                 generated_at=generated_at,
             )
             db.add(alert_msg)
-            await db.flush()  # get alert_msg.id
+            await db.flush()
 
             try:
                 async with httpx.AsyncClient(timeout=10) as client:
@@ -122,5 +129,35 @@ async def generate_and_send_daily_alert() -> None:
             except Exception as exc:
                 alert_msg.status = "failed"
                 alert_msg.error_message = str(exc)[:500]
+
+        for config in email_configs:
+            alert_msg = AlertMessage(
+                alert_type="daily_alert",
+                title=title,
+                message_body=message_body,
+                taxonomy=config.taxonomy,
+                delivery_channel="email",
+                target_name=config.email_address,
+                target_id=config.email_address,
+                status="pending",
+                generated_at=generated_at,
+            )
+            db.add(alert_msg)
+            await db.flush()
+
+            success, err = await send_alert_email(
+                to_address=config.email_address,
+                subject=f"[Atome VoC] {title}",
+                body_text=message_body,
+                body_html=build_alert_html(
+                    title=title,
+                    taxonomy_label=config.taxonomy,
+                    body=message_body,
+                ),
+            )
+            alert_msg.status = "sent" if success else "failed"
+            alert_msg.sent_at = datetime.now(tz=timezone.utc) if success else None
+            if not success:
+                alert_msg.error_message = err[:500]
 
         await db.commit()

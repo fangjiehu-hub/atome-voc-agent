@@ -150,9 +150,9 @@ async def test_group_delivery(config_id: int, db: AsyncSession = Depends(get_db)
         raise HTTPException(502, f"Lark delivery failed: {exc}") from exc
 
 
-@router.post("/{config_id}/test-owner-dm")
-async def test_owner_dm(config_id: int, db: AsyncSession = Depends(get_db)):
-    """Test owner DM delivery (graceful placeholder until bot credentials are configured)."""
+@router.post("/{config_id}/test-email")
+async def test_email_delivery(config_id: int, db: AsyncSession = Depends(get_db)):
+    """Send a test email to the configured address for this category."""
     config = (
         await db.execute(
             select(AlertDeliveryConfig).where(AlertDeliveryConfig.id == config_id)
@@ -160,38 +160,32 @@ async def test_owner_dm(config_id: int, db: AsyncSession = Depends(get_db)):
     ).scalar_one_or_none()
     if not config:
         raise HTTPException(404, "Config not found")
+    if not config.email_address:
+        raise HTTPException(400, "No email address configured for this category")
 
-    if not config.primary_owner_lark_open_id:
-        return {
-            "success": False,
-            "message": (
-                "Owner DM not configured — no Lark Open ID set for this category's "
-                "primary owner. Add it in the config to enable personal DM delivery."
-            ),
-        }
+    from backend.services.email_sender import build_alert_html, send_alert_email
 
-    # Graceful placeholder: DM requires Lark bot credentials in environment
-    from backend.config import settings as app_settings
-
-    has_bot_creds = bool(
-        getattr(app_settings, "lark_bot_app_id", None)
-        and getattr(app_settings, "lark_bot_app_secret", None)
+    subject = f"[Atome VoC] 🔔 Test alert — {config.taxonomy}"
+    body_text = (
+        f"This is a test message from the Atome VoC Early Warning Agent.\n"
+        f"Category: {config.taxonomy}\n"
+        f"If you received this, the email delivery channel is working correctly."
     )
-    if not has_bot_creds:
-        return {
-            "success": False,
-            "message": (
-                "Owner DM delivery is not yet enabled on this server — "
-                "Lark bot credentials (LARK_BOT_APP_ID / LARK_BOT_APP_SECRET) "
-                "are not configured. Lark group webhook delivery is available now."
-            ),
-        }
+    body_html = build_alert_html(
+        title=f"Test Alert — {config.taxonomy}",
+        taxonomy_label=config.taxonomy,
+        body=body_text,
+    )
 
-    # TODO: implement actual Lark DM via bot API once credentials are available
-    return {
-        "success": False,
-        "message": "Owner DM delivery is under development. Use Lark group delivery for now.",
-    }
+    success, message = await send_alert_email(
+        to_address=config.email_address,
+        subject=subject,
+        body_text=body_text,
+        body_html=body_html,
+    )
+    if not success:
+        raise HTTPException(502, f"Email delivery failed: {message}")
+    return {"success": True, "message": message}
 
 
 @router.post("/{config_id}/test-all")
@@ -230,10 +224,21 @@ async def test_all_channels(config_id: int, db: AsyncSession = Depends(get_db)):
     elif "lark_group" in channels:
         results["lark_group"] = {"success": False, "message": "No webhook URL configured"}
 
-    if "owner_dm" in channels:
-        results["owner_dm"] = {
-            "success": False,
-            "message": "Owner DM delivery is under development.",
-        }
+    if "email" in channels:
+        if config.email_address:
+            from backend.services.email_sender import build_alert_html, send_alert_email
+            subject = f"[Atome VoC] 🔔 All-channel test — {config.taxonomy}"
+            body_text = f"Testing all channels for category: {config.taxonomy}."
+            success, message = await send_alert_email(
+                to_address=config.email_address,
+                subject=subject,
+                body_text=body_text,
+                body_html=build_alert_html(
+                    title=subject, taxonomy_label=config.taxonomy, body=body_text
+                ),
+            )
+            results["email"] = {"success": success, "message": message}
+        else:
+            results["email"] = {"success": False, "message": "No email address configured"}
 
     return {"taxonomy": config.taxonomy, "results": results}

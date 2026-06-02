@@ -22,15 +22,14 @@ class AlertDeliveryConfig(Base):
     # One config per taxonomy category key (e.g. "fraud", "transaction")
     taxonomy: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
 
-    # Owner DM settings
-    primary_owner_name: Mapped[str | None] = mapped_column(String(100))
-    primary_owner_lark_open_id: Mapped[str | None] = mapped_column(String(100))
-
     # Lark group channel settings
     lark_group_name: Mapped[str | None] = mapped_column(String(200))
     lark_group_webhook: Mapped[str | None] = mapped_column(Text)
 
-    # Which channels are active for this config: ["lark_group", "owner_dm"]
+    # Email channel — per-category recipient address
+    email_address: Mapped[str | None] = mapped_column(String(200))
+
+    # Which channels are active: ["lark_group", "email"]
     delivery_channels: Mapped[list[str] | None] = mapped_column(ARRAY(String))
 
     # Routing / cooldown logic

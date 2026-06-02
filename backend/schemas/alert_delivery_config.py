@@ -7,10 +7,9 @@ from pydantic import BaseModel
 class AlertDeliveryConfigBase(BaseModel):
     enabled: bool = True
     taxonomy: str
-    primary_owner_name: Optional[str] = None
-    primary_owner_lark_open_id: Optional[str] = None
     lark_group_name: Optional[str] = None
     lark_group_webhook: Optional[str] = None
+    email_address: Optional[str] = None
     delivery_channels: Optional[list[str]] = None
     priority_threshold: str = "High"
     cooldown_hours: int = 24
@@ -24,10 +23,9 @@ class AlertDeliveryConfigUpdate(BaseModel):
     """All fields optional — PATCH-style partial update."""
 
     enabled: Optional[bool] = None
-    primary_owner_name: Optional[str] = None
-    primary_owner_lark_open_id: Optional[str] = None
     lark_group_name: Optional[str] = None
     lark_group_webhook: Optional[str] = None
+    email_address: Optional[str] = None
     delivery_channels: Optional[list[str]] = None
     priority_threshold: Optional[str] = None
     cooldown_hours: Optional[int] = None
