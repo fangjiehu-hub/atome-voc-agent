@@ -44,9 +44,11 @@ async def _scheduled_crawl():
     """Run full crawl pipeline: crawl -> save -> annotate -> cluster -> alert."""
     from backend.services.crawler_reddit import crawl_reddit
     from backend.services.crawler_twitter import crawl_twitter
+    from backend.services.crawler_lark_bitable import crawl_lark_bitable
 
     await crawl_reddit(lookback_hours=12)
     await crawl_twitter(lookback_hours=12)
+    await crawl_lark_bitable()
 
 
 async def _check_alert_schedules():

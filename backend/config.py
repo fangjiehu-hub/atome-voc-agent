@@ -54,6 +54,8 @@ class Settings(BaseSettings):
     reddit_client_secret: str = ""
     twitter_bearer_token: str = ""   # Free Twitter API v2 — create at developer.twitter.com
     x_twitter_cookies: str = ""      # JSON array of x.com cookies for Apify authenticated scraping
+    lark_app_id: str = ""            # Lark self-built app id (cli_xxxxx) for Bitable sync
+    lark_app_secret: str = ""        # Lark self-built app secret
 
     # Alerting
     slack_webhook_url: str = ""
