@@ -65,6 +65,20 @@ async def _get_settings(db: AsyncSession) -> AppSettings:
     return row
 
 
+def _split_multi(value: str | None) -> list[str]:
+    """Split a stored '+ '-joined string into a list (e.g. 'X + Reddit' → ['X','Reddit'])."""
+    if not value:
+        return []
+    return [p.strip() for p in value.split("+") if p.strip()]
+
+
+def _join_multi(value) -> str:
+    """Normalise a list or string into a '+ '-joined storage string."""
+    if isinstance(value, list):
+        return " + ".join(str(v).strip() for v in value if str(v).strip())
+    return str(value or "").strip()
+
+
 async def _get_taxonomy_map(db: AsyncSession) -> dict[str, TaxonomyCategory]:
     rows = (await db.execute(select(TaxonomyCategory).order_by(TaxonomyCategory.sort_order))).scalars().all()
     return {t.key: t for t in rows}
@@ -154,8 +168,8 @@ class SettingsResponse(BaseModel):
     sensitiveKeywords: list[str]
     ownership: dict[str, str]
     secondaryOwnership: dict[str, list[str]]
-    defaultMarket: str
-    defaultSource: str
+    defaultMarket: list[str]
+    defaultSource: list[str]
     defaultTimeWindow: str
     updatedAt: datetime | None
     # Schedule config
@@ -173,8 +187,8 @@ class SettingsPatch(BaseModel):
     sensitiveKeywords: list[str] | None = None
     ownership: dict[str, str] | None = None
     secondaryOwnership: dict[str, list[str]] | None = None
-    defaultMarket: str | None = None
-    defaultSource: str | None = None
+    defaultMarket: list[str] | str | None = None
+    defaultSource: list[str] | str | None = None
     defaultTimeWindow: str | None = None
     # Schedule config
     dailyAlertEnabled: bool | None = None
@@ -194,8 +208,8 @@ async def get_settings(db: AsyncSession = Depends(get_db)):
         sensitiveKeywords=list(s.sensitive_keywords or []),
         ownership=s.ownership or {},
         secondaryOwnership=s.secondary_ownership or {},
-        defaultMarket=s.default_market,
-        defaultSource=s.default_source,
+        defaultMarket=_split_multi(s.default_market),
+        defaultSource=_split_multi(s.default_source),
         defaultTimeWindow=s.default_time_window,
         updatedAt=s.updated_at,
         # Schedule config — use column value if set, else sensible defaults
@@ -226,9 +240,9 @@ async def update_settings(patch: SettingsPatch, db: AsyncSession = Depends(get_d
     if patch.secondaryOwnership is not None:
         s.secondary_ownership = patch.secondaryOwnership
     if patch.defaultMarket is not None:
-        s.default_market = patch.defaultMarket
+        s.default_market = _join_multi(patch.defaultMarket)
     if patch.defaultSource is not None:
-        s.default_source = patch.defaultSource
+        s.default_source = _join_multi(patch.defaultSource)
     if patch.defaultTimeWindow is not None:
         s.default_time_window = patch.defaultTimeWindow
     if patch.dailyAlertEnabled is not None:

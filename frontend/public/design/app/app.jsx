@@ -80,7 +80,8 @@ function App() {
       drawerTitle = drawerSelector.value + " sentiment · Detailed view";
       drawerSub = "All mentions classified as " + drawerSelector.value + ".";
     } else if (drawerSelector.kind === "platform") {
-      drawerTitle = (drawerSelector.value === "twitter" ? "X / Twitter" : "Reddit") + " · Detailed view";
+      const platformNames = { twitter: "X / Twitter", reddit: "Reddit", facebook: "Facebook", tiktok: "TikTok" };
+      drawerTitle = (platformNames[drawerSelector.value] || drawerSelector.value) + " · Detailed view";
       drawerSub = "Mentions from this source.";
     } else if (drawerSelector.kind === "cluster") {
       const c = VoC.CLUSTERS[drawerSelector.value];

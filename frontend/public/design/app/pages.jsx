@@ -343,7 +343,7 @@ function MentionsPage({ settings, openCorrection }) {
         <FilterSelect label="Engagement" value={filterLevel} onChange={setFilterLevel}
           options={[{ v: "all", l: "All levels" }, { v: "High", l: "High" }, { v: "Medium", l: "Medium" }, { v: "Low", l: "Low" }]} />
         <FilterSelect label="Source" value={filterPlat} onChange={setFilterPlat}
-          options={[{ v: "all", l: "All sources" }, { v: "twitter", l: "X / Twitter" }, { v: "reddit", l: "Reddit" }]} />
+          options={[{ v: "all", l: "All sources" }, { v: "twitter", l: "X / Twitter" }, { v: "reddit", l: "Reddit" }, { v: "facebook", l: "Facebook" }, { v: "tiktok", l: "TikTok" }]} />
         <FilterSelect label="Status" value={filterStatus} onChange={setFilterStatus}
           options={[{ v: "all", l: "All" }, { v: "New", l: "New" }, { v: "In Review", l: "In Review" }, { v: "Actioned", l: "Actioned" }, { v: "Closed", l: "Closed" }, { v: "Rejected", l: "Rejected" }, { v: "Not Relevant", l: "Not Relevant" }, { v: "Duplicate", l: "Duplicate" }]} />
         <FilterSelect label="Alert" value={filterAlert} onChange={setFilterAlert}
@@ -683,7 +683,7 @@ function MethodologyPage({ settings }) {
         <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 font-mono text-[13.5px] text-gray-800 mb-3">
           engagement = reposts + likes + replies + comments
         </div>
-        <p className="text-[12.5px] text-gray-600">Total public interaction. Views and follower counts are excluded — they are inconsistent across X and Reddit.</p>
+        <p className="text-[12.5px] text-gray-600">Total public interaction. Views and follower counts are excluded — they are inconsistent across platforms.</p>
       </div>
 
       <div className={cardCls + " p-6 mb-4"}>
@@ -735,7 +735,7 @@ function MethodologyPage({ settings }) {
           <li className="flex gap-2.5"><span className="font-bold text-brand-500">2.</span><span>Low-engagement posts can still be critical if they involve <strong>fraud, unauthorized transactions, or collection conduct</strong> — these are escalated regardless of engagement.</span></li>
           <li className="flex gap-2.5"><span className="font-bold text-brand-500">3.</span><span>Sentiment classification is <strong>AI-generated</strong> and may be inaccurate for sarcasm, Taglish, or short posts. Use the "Correct sentiment" option in the mention menu.</span></li>
           <li className="flex gap-2.5"><span className="font-bold text-brand-500">4.</span><span>Category classification may need <strong>manual review</strong> for ambiguous posts — use the correction flow.</span></li>
-          <li className="flex gap-2.5"><span className="font-bold text-brand-500">5.</span><span>Current sources are X/Twitter and Reddit only. Facebook and TikTok are planned but not yet monitored.</span></li>
+          <li className="flex gap-2.5"><span className="font-bold text-brand-500">5.</span><span>Monitored sources: X/Twitter, Reddit, Facebook and TikTok. Reddit and X are collected directly; Facebook and TikTok arrive via the Octo Agent social listening pipeline.</span></li>
           <li className="flex gap-2.5"><span className="font-bold text-brand-500">6.</span><span>Thresholds should be <strong>recalibrated periodically</strong> as campaign activity and market maturity change.</span></li>
         </ol>
       </div>
@@ -766,7 +766,7 @@ function RationalePage() {
     },
     {
       t: "Engagement = reposts + likes + replies + comments.",
-      b: "Total public interaction. Views and follower counts are excluded — they are inconsistent across X and Reddit and would skew the thresholds.",
+      b: "Total public interaction. Views and follower counts are excluded — they are inconsistent across platforms and would skew the thresholds.",
     },
     {
       t: "Engagement thresholds are configurable and must be recalibrated.",
@@ -786,7 +786,7 @@ function RationalePage() {
     },
     {
       t: "Data freshness and source coverage must always be visible.",
-      b: "Users should never wonder if the data is stale. The freshness banner shows the last and next refresh time on every page. Current sources (X, Reddit) and planned sources (Facebook, TikTok) are labelled separately so the coverage gap is explicit.",
+      b: "Users should never wonder if the data is stale. The freshness banner shows the last and next refresh time on every page, along with the active sources (X, Reddit, Facebook, TikTok) so coverage is explicit.",
     },
   ];
 

@@ -107,9 +107,10 @@ function DataFreshnessBanner({ settings }) {
       <span className="text-gray-300">·</span>
       <span className="inline-flex items-center gap-1">
         Active sources:&nbsp;
-        <span className="bg-gray-900 text-white px-1.5 py-0.5 rounded text-[9.5px] font-extrabold uppercase">X</span>
-        <span className="bg-[#FF4500] text-white px-1.5 py-0.5 rounded text-[9.5px] font-extrabold uppercase">RD</span>
-        <span className="text-gray-400 text-[11px] ml-1">(Facebook + TikTok: planned)</span>
+        <PlatformPill platform="twitter" />
+        <PlatformPill platform="reddit" />
+        <PlatformPill platform="facebook" />
+        <PlatformPill platform="tiktok" />
       </span>
     </div>
   );
@@ -231,9 +232,19 @@ function CategoryTag({ category }) {
   return <span className="inline-block bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full text-[11px] font-medium">{t ? t.label : category}</span>;
 }
 
+const PLATFORM_PILL_STYLES = {
+  twitter:  { label: "X",  bg: "#000000" },
+  reddit:   { label: "RD", bg: "#FF4500" },
+  facebook: { label: "FB", bg: "#1877F2" },
+  tiktok:   { label: "TT", bg: "#010101" },
+};
+
 function PlatformPill({ platform }) {
-  if (platform === "twitter") return <span className="bg-gray-900 text-white px-1.5 py-0.5 rounded text-[9.5px] font-extrabold uppercase">X</span>;
-  return <span className="bg-[#FF4500] text-white px-1.5 py-0.5 rounded text-[9.5px] font-extrabold uppercase">RD</span>;
+  const s = PLATFORM_PILL_STYLES[(platform || "").toLowerCase()];
+  if (!s) {
+    return <span className="bg-gray-500 text-white px-1.5 py-0.5 rounded text-[9.5px] font-extrabold uppercase">{(platform || "?").slice(0, 2)}</span>;
+  }
+  return <span className="text-white px-1.5 py-0.5 rounded text-[9.5px] font-extrabold uppercase" style={{ backgroundColor: s.bg }}>{s.label}</span>;
 }
 
 // ---- Why routed here panel — simplified ------------------------------

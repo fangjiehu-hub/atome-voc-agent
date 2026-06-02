@@ -77,10 +77,10 @@
     { value: "TW", active: false },
   ];
   const SOURCE_OPTIONS = [
-    { value: "X",        active: true  },
-    { value: "Reddit",   active: true  },
-    { value: "Facebook", active: false },
-    { value: "TikTok",   active: false },
+    { value: "X",        active: true },
+    { value: "Reddit",   active: true },
+    { value: "Facebook", active: true },
+    { value: "TikTok",   active: true },
   ];
 
   // Prefer settings.secondaryOwnership (user-configured) → fall back to static map
