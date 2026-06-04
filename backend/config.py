@@ -82,9 +82,9 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 1440
 
     # Lark SSO ("Login with Lark")
-    # When False, the API stays open (current behaviour) so the dashboard keeps
-    # working; flip to True (via AUTH_ENFORCED secret) once SSO login is verified.
-    auth_enforced: bool = False
+    # Secure by default: the API requires a valid Lark SSO session. Set
+    # AUTH_ENFORCED=false only for local development without SSO configured.
+    auth_enforced: bool = True
     lark_oauth_redirect_uri: str = "https://atome-voc-v2-frontend.fly.dev/api/auth/lark/callback"
     lark_oauth_authorize_base: str = "https://accounts.larksuite.com/open-apis/authen/v1/authorize"
     # Only members whose email ends with one of these domains may log in

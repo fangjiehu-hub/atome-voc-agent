@@ -23,11 +23,13 @@ FROM base AS runner
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-COPY --from=build /app/.next/standalone ./
-COPY --from=build /app/.next/static ./.next/static
+# Least privilege: run as the built-in non-root `node` user (security-team requirement).
+COPY --from=build --chown=node:node /app/.next/standalone ./
+COPY --from=build --chown=node:node /app/.next/static ./.next/static
 # Next.js standalone build doesn't copy /public automatically; do it explicitly so
 # static design files (frontend/public/design/*) ship with the runner image.
-COPY --from=build /app/public ./public
+COPY --from=build --chown=node:node /app/public ./public
 
+USER node
 EXPOSE 3000
 CMD ["node", "server.js"]
