@@ -157,7 +157,7 @@ async def lark_callback(request: Request, code: str | None = None, state: str | 
     user = {"open_id": data.get("open_id"), "name": data.get("name"), "email": email}
     session = issue_session_token(user)
 
-    resp = RedirectResponse(f"{settings.frontend_base_url}/design", status_code=302)
+    resp = RedirectResponse(f"{settings.frontend_base_url}/design/atome-voc.html", status_code=302)
     resp.set_cookie(
         settings.session_cookie_name,
         session,
