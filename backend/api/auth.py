@@ -1,19 +1,17 @@
-from datetime import datetime, timedelta
+"""Legacy password auth — DISABLED.
 
-from fastapi import APIRouter, Depends, HTTPException
-from jose import JWTError, jwt
-from passlib.context import CryptContext
+The application now authenticates exclusively via Lark SSO (see auth_sso.py).
+Password login and open self-registration are disabled to close the
+open-registration / brute-force surface (audit H-1, M-4). The routes remain
+mounted only to return a clear 403 for any stale client.
+"""
+
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from backend.config import settings
-from backend.database import get_db
-from backend.models.user import User
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+_SSO_ONLY = "Password authentication is disabled. Sign in with Lark SSO at /api/auth/lark/login."
 
 
 class LoginRequest(BaseModel):
@@ -28,12 +26,6 @@ class RegisterRequest(BaseModel):
     department: str | None = None
 
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    user: dict
-
-
 class UserOut(BaseModel):
     id: int
     email: str
@@ -44,53 +36,13 @@ class UserOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-def create_token(user_id: int) -> str:
-    expire = datetime.utcnow() + timedelta(minutes=settings.jwt_expire_minutes)
-    return jwt.encode(
-        {"sub": str(user_id), "exp": expire},
-        settings.jwt_secret,
-        algorithm=settings.jwt_algorithm,
-    )
+@router.post("/login")
+async def login(req: LoginRequest):
+    raise HTTPException(403, _SSO_ONLY)
 
 
-@router.post("/login", response_model=TokenResponse)
-async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
-    user = (
-        await db.execute(select(User).where(User.email == req.email))
-    ).scalar_one_or_none()
-    if not user or not pwd_context.verify(req.password, user.hashed_password):
-        raise HTTPException(401, "Invalid credentials")
+@router.post("/register")
+async def register(req: RegisterRequest):
+    raise HTTPException(403, _SSO_ONLY)
 
-    token = create_token(user.id)
-    return TokenResponse(
-        access_token=token,
-        user=UserOut.model_validate(user).model_dump(),
-    )
-
-
-@router.post("/register", response_model=TokenResponse)
-async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
-    existing = (
-        await db.execute(select(User).where(User.email == req.email))
-    ).scalar_one_or_none()
-    if existing:
-        raise HTTPException(409, "Email already registered")
-
-    user = User(
-        email=req.email,
-        hashed_password=pwd_context.hash(req.password),
-        full_name=req.full_name,
-        department=req.department,
-        role="viewer",
-    )
-    db.add(user)
-    await db.commit()
-    await db.refresh(user)
-
-    token = create_token(user.id)
-    return TokenResponse(
-        access_token=token,
-        user=UserOut.model_validate(user).model_dump(),
-    )
-
-# NOTE: GET /api/auth/me is now served by auth_sso.py (Lark SSO session).
+# NOTE: GET /api/auth/me is served by auth_sso.py (Lark SSO session).

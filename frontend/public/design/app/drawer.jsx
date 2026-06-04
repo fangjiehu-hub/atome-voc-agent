@@ -285,8 +285,8 @@ function MentionCard({ mention, settings, onCorrect, dense, hideWhy }) {
             <ActionPill label={routing.action} actionType={routing.actionType} />
             {routing.escalation && <EscalationFlag note={routing.escalationNote} compact />}
           </div>
-          {view.url
-            ? <a href={view.url} target="_blank" rel="noopener noreferrer"
+          {safeHref(view.url)
+            ? <a href={safeHref(view.url)} target="_blank" rel="noopener noreferrer"
                  className="text-[11px] text-brand-500 hover:underline mt-1 inline-block">View source →</a>
             : <span className="text-[11px] text-gray-400 italic mt-1 inline-block">Original post no longer available</span>
           }

@@ -59,7 +59,9 @@ async def send_alert_email(
                 password=settings.smtp_password,
                 start_tls=True,
             )
-        logger.info("Alert email sent to %s — %s", to_address, subject)
+        # Redact the recipient address in logs (keep only the domain).
+        _domain = to_address.split("@")[-1] if "@" in to_address else "?"
+        logger.info("Alert email sent (recipient domain=%s)", _domain)
         return True, "Email sent successfully"
     except Exception as exc:
         logger.exception("Failed to send alert email to %s", to_address)

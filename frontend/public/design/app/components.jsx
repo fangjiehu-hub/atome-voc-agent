@@ -4,6 +4,12 @@
 
 const { useState, useMemo, useEffect } = React;
 
+// Only allow http(s) URLs into hrefs — blocks javascript:/data: from crawled data.
+function safeHref(url) {
+  if (typeof url !== "string") return null;
+  return /^https?:\/\//i.test(url.trim()) ? url : null;
+}
+
 const cardCls = "bg-white rounded-[14px] border border-gray-200 shadow-sm";
 const sectionTitleCls = "text-sm font-bold text-gray-900";
 const sectionSubCls = "text-xs text-gray-500 mt-0.5";

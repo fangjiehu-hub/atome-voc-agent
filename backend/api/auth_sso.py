@@ -20,9 +20,9 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
 import httpx
+import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
-from jose import JWTError, jwt
 
 from backend.config import settings
 
@@ -61,7 +61,7 @@ def _decode_session(token: str) -> dict | None:
             audience="atome-voc-dashboard",
             issuer="atome-voc",
         )
-    except JWTError:
+    except jwt.PyJWTError:
         return None
 
 

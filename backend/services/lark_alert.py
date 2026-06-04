@@ -187,9 +187,8 @@ async def send_alert(payload: dict, webhook_url: str | None = None) -> bool:
     """POST payload to the Lark incoming webhook. Returns True on success."""
     url = webhook_url or os.environ.get("LARK_ALERT_WEBHOOK_URL", "")
     if not url:
-        logger.warning(
-            "LARK_ALERT_WEBHOOK_URL not set — alert payload logged only:\n%s", payload
-        )
+        # Do not log the full payload (contains post text / PII) — just note the miss.
+        logger.warning("LARK_ALERT_WEBHOOK_URL not set — alert not sent (payload suppressed).")
         return False
     try:
         async with httpx.AsyncClient(timeout=10) as client:
