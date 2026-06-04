@@ -93,8 +93,4 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
         user=UserOut.model_validate(user).model_dump(),
     )
 
-
-@router.get("/me", response_model=UserOut)
-async def me(token: str = Depends(lambda: None)):
-    # Simplified — in production use OAuth2PasswordBearer
-    pass
+# NOTE: GET /api/auth/me is now served by auth_sso.py (Lark SSO session).
