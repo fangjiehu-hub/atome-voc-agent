@@ -256,6 +256,16 @@
     return log;
   }
 
+  // If any API call returns 401 (auth enforced + no session), send the user to
+  // Lark SSO login. Returns true when a redirect was triggered.
+  function redirectToLoginIfUnauthorized(resp) {
+    if (resp && resp.status === 401) {
+      window.location.href = API_BASE + "/api/auth/lark/login";
+      return true;
+    }
+    return false;
+  }
+
   // ─── async bootstrap ──────────────────────────────────────────────────
   async function init() {
     const root = document.getElementById("root");
@@ -263,9 +273,13 @@
       root.innerHTML = '<div style="padding:32px;color:#6B7280;font-size:14px;">Loading Atome VoC data from /api/v2 …</div>';
     }
     try {
+      // Probe auth first; if unauthorized, bounce to Lark login before loading data.
+      const probe = await fetch(API_BASE + "/api/v2/settings");
+      if (redirectToLoginIfUnauthorized(probe)) return;
+
       const [tax, settings, mentions, clusters, corrections] = await Promise.all([
         fetch(API_BASE + "/api/v2/taxonomy").then((r) => r.json()),
-        fetch(API_BASE + "/api/v2/settings").then((r) => r.json()),
+        probe.json(),
         fetch(API_BASE + "/api/v2/mentions?limit=500").then((r) => r.json()),
         fetch(API_BASE + "/api/v2/clusters").then((r) => r.json()),
         fetch(API_BASE + "/api/v2/corrections").then((r) => r.json()),

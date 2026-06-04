@@ -81,6 +81,18 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440
 
+    # Lark SSO ("Login with Lark")
+    # When False, the API stays open (current behaviour) so the dashboard keeps
+    # working; flip to True (via AUTH_ENFORCED secret) once SSO login is verified.
+    auth_enforced: bool = False
+    lark_oauth_redirect_uri: str = "https://atome-voc-v2-frontend.fly.dev/api/auth/lark/callback"
+    lark_oauth_authorize_base: str = "https://accounts.larksuite.com/open-apis/authen/v1/authorize"
+    # Only members whose email ends with one of these domains may log in
+    # (comma-separated). Empty = allow any org member who can authorize the app.
+    allowed_email_domains: str = "advancegroup.com"
+    session_cookie_name: str = "voc_session"
+    frontend_base_url: str = "https://atome-voc-v2-frontend.fly.dev"
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api import alert_delivery, alert_messages, alerts, analytics, auth, crawler, feedback, incidents, lark_bots, monitor, routing, taxonomy, v2
@@ -92,21 +92,28 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
-# Mount routers
-app.include_router(monitor.router)
-app.include_router(crawler.router)
-app.include_router(incidents.router)
-app.include_router(alerts.router)
-app.include_router(feedback.router)
-app.include_router(taxonomy.router)
-app.include_router(analytics.router)
+# Auth: Lark SSO endpoints stay open (login/callback/me/logout).
+from backend.api import auth_sso
+from backend.api.auth_sso import require_auth
+
 app.include_router(auth.router)
-app.include_router(lark_bots.router)
-app.include_router(routing.router)
+app.include_router(auth_sso.router)
+
+# Protected routers — `require_auth` enforces login once AUTH_ENFORCED=true.
+_guard = [Depends(require_auth)]
+app.include_router(monitor.router, dependencies=_guard)
+app.include_router(crawler.router, dependencies=_guard)
+app.include_router(incidents.router, dependencies=_guard)
+app.include_router(alerts.router, dependencies=_guard)
+app.include_router(feedback.router, dependencies=_guard)
+app.include_router(taxonomy.router, dependencies=_guard)
+app.include_router(analytics.router, dependencies=_guard)
+app.include_router(lark_bots.router, dependencies=_guard)
+app.include_router(routing.router, dependencies=_guard)
 # v2 — design-aligned endpoints consumed by the Claude Design frontend
-app.include_router(v2.router)
-app.include_router(alert_delivery.router)
-app.include_router(alert_messages.router)
+app.include_router(v2.router, dependencies=_guard)
+app.include_router(alert_delivery.router, dependencies=_guard)
+app.include_router(alert_messages.router, dependencies=_guard)
 
 
 @app.get("/health")
