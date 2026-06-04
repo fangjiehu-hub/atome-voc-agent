@@ -190,16 +190,12 @@ async def send_alert(payload: dict, webhook_url: str | None = None) -> bool:
         # Do not log the full payload (contains post text / PII) — just note the miss.
         logger.warning("LARK_ALERT_WEBHOOK_URL not set — alert not sent (payload suppressed).")
         return False
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(url, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
-            if data.get("code") not in (0, None) or data.get("StatusCode") not in (0, None):
-                logger.error("Lark webhook returned non-zero code: %s", data)
-                return False
-            logger.info("Lark alert sent successfully (status %s)", resp.status_code)
-            return True
-    except Exception as exc:
-        logger.error("Failed to send Lark alert: %s", exc)
-        return False
+    # Route through the SSRF-safe sender (allowlist + private-IP block).
+    from backend.services.safe_http import safe_webhook_post
+
+    ok, msg = await safe_webhook_post(url, json=payload)
+    if ok:
+        logger.info("Lark alert sent successfully")
+    else:
+        logger.error("Failed to send Lark alert: %s", msg)
+    return ok

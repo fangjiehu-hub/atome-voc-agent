@@ -255,9 +255,9 @@ async def _send_slack(alert: Alert) -> bool:
         ]
     }
 
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(settings.slack_webhook_url, json=payload)
-        return resp.status_code == 200
+    from backend.services.safe_http import safe_webhook_post
+    ok, _ = await safe_webhook_post(settings.slack_webhook_url, json=payload)
+    return ok
 
 
 async def _send_lark(alert: Alert) -> bool:
@@ -294,9 +294,9 @@ async def _send_lark(alert: Alert) -> bool:
         },
     }
 
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(webhook_url, json=payload)
-        return resp.status_code == 200
+    from backend.services.safe_http import safe_webhook_post
+    ok, _ = await safe_webhook_post(webhook_url, json=payload)
+    return ok
 
 
 async def _send_email(alert: Alert) -> bool:
