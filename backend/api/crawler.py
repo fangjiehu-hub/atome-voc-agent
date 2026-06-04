@@ -1,7 +1,7 @@
 """POST /crawler/run — trigger a crawl job."""
 
 from fastapi import APIRouter, BackgroundTasks, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import get_db
@@ -11,7 +11,8 @@ router = APIRouter(prefix="/api/crawler", tags=["crawler"])
 
 class CrawlRequest(BaseModel):
     platform: str  # twitter | reddit | all
-    lookback_hours: int = 24
+    # Cap lookback to bound crawler / LLM / Apify cost (audit H-2): max 90 days.
+    lookback_hours: int = Field(24, ge=1, le=2160)
 
 
 class CrawlResponse(BaseModel):
@@ -41,7 +42,7 @@ async def trigger_crawl(
 
 
 class ReclusterRequest(BaseModel):
-    lookback_hours: int = 720
+    lookback_hours: int = Field(720, ge=1, le=2160)
 
 
 @router.post("/recluster", response_model=CrawlResponse)

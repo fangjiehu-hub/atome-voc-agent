@@ -53,6 +53,9 @@ class Post(Base):
     summary: Mapped[str | None] = mapped_column(Text)
     ai_explanation: Mapped[str | None] = mapped_column(Text)
     annotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # SHA-256 of normalized content_text — lets the annotator reuse a prior
+    # annotation for identical content instead of re-calling the LLM.
+    content_hash: Mapped[str | None] = mapped_column(String(64), index=True)
 
     # Design-aligned per-mention fields
     # New | In Review | Actioned | Closed | Rejected | Not Relevant | Duplicate

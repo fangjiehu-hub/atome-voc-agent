@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     x_twitter_cookies: str = ""      # JSON array of x.com cookies for Apify authenticated scraping
     lark_app_id: str = ""            # Lark self-built app id (cli_xxxxx) for Bitable sync
     lark_app_secret: str = ""        # Lark self-built app secret
+    # Bitable coordinates for the Octo Agent social-listening table (override via env)
+    lark_bitable_base_token: str = "VwkKbbJFTa5aPGsHW11laln7gUd"
+    lark_bitable_table_id: str = "tblx3Vofj10lFJiY"
+    lark_bitable_view_id: str = "vew6JnS2Ra"
 
     # Alerting
     slack_webhook_url: str = ""

@@ -27,10 +27,10 @@ from backend.models.post import Post
 
 logger = logging.getLogger(__name__)
 
-# ── Bitable coordinates (from the shared URL) ────────────────────────────────
-BASE_TOKEN  = "VwkKbbJFTa5aPGsHW11laln7gUd"
-TABLE_ID    = "tblx3Vofj10lFJiY"
-VIEW_ID     = "vew6JnS2Ra"          # "Posts Gallery View" — same data, stable filter
+# ── Bitable coordinates (env-overridable; default to the shared table) ───────
+BASE_TOKEN  = settings.lark_bitable_base_token
+TABLE_ID    = settings.lark_bitable_table_id
+VIEW_ID     = settings.lark_bitable_view_id
 
 LARK_API    = "https://open.larksuite.com/open-apis"
 PAGE_SIZE   = 100                   # max per Bitable page

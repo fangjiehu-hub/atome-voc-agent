@@ -117,18 +117,15 @@ async def generate_and_send_daily_alert() -> None:
             db.add(alert_msg)
             await db.flush()
 
-            try:
-                async with httpx.AsyncClient(timeout=10) as client:
-                    resp = await client.post(
-                        config.lark_group_webhook,
-                        json={"msg_type": "text", "content": {"text": message_body}},
-                    )
-                    resp.raise_for_status()
-                alert_msg.status = "sent"
-                alert_msg.sent_at = datetime.now(tz=timezone.utc)
-            except Exception as exc:
-                alert_msg.status = "failed"
-                alert_msg.error_message = str(exc)[:500]
+            from backend.services.safe_http import safe_webhook_post
+            ok, msg = await safe_webhook_post(
+                config.lark_group_webhook,
+                json={"msg_type": "text", "content": {"text": message_body}},
+            )
+            alert_msg.status = "sent" if ok else "failed"
+            alert_msg.sent_at = datetime.now(tz=timezone.utc) if ok else None
+            if not ok:
+                alert_msg.error_message = msg[:500]
 
         for config in email_configs:
             alert_msg = AlertMessage(

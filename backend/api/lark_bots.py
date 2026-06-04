@@ -94,11 +94,7 @@ async def test_lark_bot(bot_id: int, db: AsyncSession = Depends(get_db)):
         },
     }
 
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(bot.webhook_url, json=payload, timeout=10)
-        if resp.status_code == 200:
-            return {"ok": True, "message": "Test message sent successfully"}
-        return {"ok": False, "message": f"Lark returned HTTP {resp.status_code}"}
-    except httpx.RequestError as exc:
-        return {"ok": False, "message": f"Request failed: {exc}"}
+    from backend.services.safe_http import safe_webhook_post
+
+    ok, message = await safe_webhook_post(bot.webhook_url, json=payload)
+    return {"ok": ok, "message": "Test message sent successfully" if ok else message}

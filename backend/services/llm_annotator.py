@@ -5,8 +5,10 @@ mention_status, cluster_topic, and primary_owner; keeps the legacy `severity`
 column populated for backward compat.
 """
 
+import hashlib
 import json
 import logging
+import re
 from datetime import datetime
 
 from anthropic import AsyncAnthropic
@@ -78,6 +80,42 @@ async def reannotate_all_posts(limit: int = 500):
     return await _annotate_posts(only_unannotated=False, limit=limit)
 
 
+def _content_hash(text: str | None) -> str | None:
+    """SHA-256 of normalized text (lowercased, whitespace-collapsed)."""
+    if not text or not text.strip():
+        return None
+    normalized = re.sub(r"\s+", " ", text.strip().lower())
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+async def _build_annotation_cache(db: AsyncSession, rows: list[Post]) -> dict[str, dict]:
+    """Map content_hash → reusable annotation, from already-annotated posts.
+
+    Lets us copy a prior LLM result for identical content instead of paying for
+    another Claude call.
+    """
+    hashes = list({p.content_hash for p in rows if p.content_hash})
+    if not hashes:
+        return {}
+    cached = (
+        await db.execute(
+            select(Post).where(Post.content_hash.in_(hashes), Post.annotated_at.isnot(None))
+        )
+    ).scalars().all()
+    cache: dict[str, dict] = {}
+    for cp in cached:
+        if cp.content_hash and cp.content_hash not in cache:
+            cache[cp.content_hash] = {
+                "category": cp.category,
+                "is_negative": cp.is_negative,
+                "cluster_topic": cp.cluster_topic,
+                "language": cp.language,
+                "summary": cp.summary,
+                "sub_issues": cp.sub_issues or [],
+            }
+    return cache
+
+
 async def _annotate_posts(only_unannotated: bool, limit: int) -> int:
     async with async_session() as db:
         query = select(Post).where(Post.content_text.isnot(None))
@@ -91,12 +129,35 @@ async def _annotate_posts(only_unannotated: bool, limit: int) -> int:
 
         thresholds, keywords, tax_by_key = await _load_app_context(db)
 
+        # Stamp content hashes and build a dedup cache from prior annotations.
+        for p in rows:
+            p.content_hash = _content_hash(p.content_text)
+        cache = await _build_annotation_cache(db, rows)
+
+        # Partition: unique misses go to the LLM; everything else copies from cache
+        # (DB hits + duplicates within this run).
+        to_classify: dict[str, Post] = {}
+        to_copy: list[Post] = []
+        for p in rows:
+            h = p.content_hash
+            if h and h in cache:
+                to_copy.append(p)
+            elif h and h in to_classify:
+                to_copy.append(p)
+            else:
+                to_classify[h or id(p)] = p
+
+        reps = list(to_classify.values())
         annotated = 0
-        for i in range(0, len(rows), BATCH_SIZE):
-            batch = rows[i : i + BATCH_SIZE]
+
+        for i in range(0, len(reps), BATCH_SIZE):
+            batch = reps[i : i + BATCH_SIZE]
             try:
                 results = await _classify_batch(batch)
                 _apply_results(batch, results, thresholds, keywords, tax_by_key)
+                for p, r in zip(batch, results):
+                    if p.content_hash:
+                        cache[p.content_hash] = r
                 annotated += len(batch)
             except Exception:
                 logger.exception("Batch annotation failed, retrying individually")
@@ -104,12 +165,26 @@ async def _annotate_posts(only_unannotated: bool, limit: int) -> int:
                     try:
                         results = await _classify_batch([post])
                         _apply_results([post], results, thresholds, keywords, tax_by_key)
+                        if post.content_hash:
+                            cache[post.content_hash] = results[0]
                         annotated += 1
                     except Exception:
                         logger.exception("Individual annotation failed for post %s", post.id)
 
+        # Copy cached annotations onto the duplicates (no LLM call).
+        copied = [p for p in to_copy if p.content_hash in cache]
+        if copied:
+            _apply_results(
+                copied, [cache[p.content_hash] for p in copied], thresholds, keywords, tax_by_key
+            )
+            annotated += len(copied)
+            logger.info("Annotation dedup: reused %d cached annotations (skipped LLM)", len(copied))
+
         await db.commit()
-        logger.info("Annotated %d posts (only_unannotated=%s)", annotated, only_unannotated)
+        logger.info(
+            "Annotated %d posts (only_unannotated=%s, %d via LLM, %d via dedup)",
+            annotated, only_unannotated, len(reps), len(copied),
+        )
         return annotated
 
 

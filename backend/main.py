@@ -13,6 +13,13 @@ from backend.config import settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Refuse to start with a weak/default JWT secret (audit H-1).
+    if settings.jwt_secret in ("", "change-me-in-production") or len(settings.jwt_secret) < 32:
+        raise RuntimeError(
+            "JWT_SECRET is missing, default, or too short (need ≥32 chars). "
+            "Set a strong random JWT_SECRET before starting."
+        )
+
     # Start APScheduler for crawl cron jobs
     scheduler = AsyncIOScheduler(timezone=settings.tz)
 
@@ -66,12 +73,23 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+@app.middleware("http")
+async def security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
+
+_cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip() and o.strip() != "*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins.split(","),
+    allow_origins=_cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # Mount routers

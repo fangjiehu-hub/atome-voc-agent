@@ -610,6 +610,9 @@ async def translate_post(payload: TranslateIn):
 
     if not payload.text or not payload.text.strip():
         raise HTTPException(422, "text must not be empty")
+    # Cap input length to bound Claude token cost (audit H-2).
+    if len(payload.text) > 5000:
+        raise HTTPException(422, "text too long (max 5000 characters)")
     try:
         result = await translate_to_english(payload.text, from_language=payload.language)
         return TranslateOut(
@@ -619,7 +622,7 @@ async def translate_post(payload: TranslateIn):
         )
     except Exception as exc:
         logger.error("Translation endpoint error: %s", exc)
-        raise HTTPException(502, f"Translation service error: {exc}") from exc
+        raise HTTPException(502, "Translation service error.") from exc
 
 
 # ────────────────────────────────────────────────────────────────────────────

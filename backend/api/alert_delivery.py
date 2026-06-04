@@ -129,7 +129,7 @@ async def test_group_delivery(config_id: int, db: AsyncSession = Depends(get_db)
     if not config.lark_group_webhook:
         raise HTTPException(400, "No Lark group webhook configured for this category")
 
-    import httpx
+    from backend.services.safe_http import safe_webhook_post
 
     payload = {
         "msg_type": "text",
@@ -141,13 +141,10 @@ async def test_group_delivery(config_id: int, db: AsyncSession = Depends(get_db)
             )
         },
     }
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(config.lark_group_webhook, json=payload)
-            resp.raise_for_status()
-        return {"success": True, "message": "Test message sent to Lark group successfully."}
-    except Exception as exc:
-        raise HTTPException(502, f"Lark delivery failed: {exc}") from exc
+    success, message = await safe_webhook_post(config.lark_group_webhook, json=payload)
+    if not success:
+        raise HTTPException(502, message)
+    return {"success": True, "message": "Test message sent to Lark group successfully."}
 
 
 @router.post("/{config_id}/test-email")
@@ -203,7 +200,7 @@ async def test_all_channels(config_id: int, db: AsyncSession = Depends(get_db)):
     results: dict[str, dict] = {}
 
     if "lark_group" in channels and config.lark_group_webhook:
-        import httpx
+        from backend.services.safe_http import safe_webhook_post
 
         payload = {
             "msg_type": "text",
@@ -214,13 +211,8 @@ async def test_all_channels(config_id: int, db: AsyncSession = Depends(get_db)):
                 )
             },
         }
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.post(config.lark_group_webhook, json=payload)
-                resp.raise_for_status()
-            results["lark_group"] = {"success": True, "message": "Sent successfully"}
-        except Exception as exc:
-            results["lark_group"] = {"success": False, "message": str(exc)}
+        success, message = await safe_webhook_post(config.lark_group_webhook, json=payload)
+        results["lark_group"] = {"success": success, "message": message}
     elif "lark_group" in channels:
         results["lark_group"] = {"success": False, "message": "No webhook URL configured"}
 
