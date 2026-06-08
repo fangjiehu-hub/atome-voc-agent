@@ -2,6 +2,18 @@
 // Atome VoC — root app + hash router + global drawer + correction
 // =============================================================
 
+function AccessDenied() {
+  return (
+    <div style={{ padding: 48, textAlign: "center", color: "#6B7280" }}>
+      <div style={{ fontSize: 40, marginBottom: 12 }}>🔒</div>
+      <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>Admin access required</div>
+      <div style={{ fontSize: 13, marginTop: 6 }}>
+        This page is restricted to administrators. You're signed in with view-only access.
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [settings, setSettings] = React.useState(VoC.loadSettings());
   const [route, setRoute] = React.useState((window.location.hash || "#/overview").replace(/^#\//, "") || "overview");
@@ -56,8 +68,8 @@ function App() {
     case "routing":     page = <RoutingMatrixPage settings={settings} />; break;
     case "methodology": page = <MethodologyPage settings={settings} />; break;
     case "rationale":   page = <RationalePage />; break;
-    case "settings":        page = <SettingsPage settings={settings} updateSettings={updateSettings} resetSettings={reset} />; break;
-    case "alert-delivery":  page = <AlertDeliveryPage settings={settings} navigate={navigate} updateSettings={updateSettings} />; break;
+    case "settings":        page = (VoC.isAdmin ? <SettingsPage settings={settings} updateSettings={updateSettings} resetSettings={reset} /> : <AccessDenied />); break;
+    case "alert-delivery":  page = (VoC.isAdmin ? <AlertDeliveryPage settings={settings} navigate={navigate} updateSettings={updateSettings} /> : <AccessDenied />); break;
     case "alert-history":   page = <AlertHistoryPage settings={settings} />; break;
     case "log":             page = <CorrectionLogPage settings={settings} log={log} clearLog={clearLog} />; break;
     default:            page = <OverviewPage settings={settings} openDrillDown={openDrillDown} openCorrection={openCorrection} navigate={navigate} />;

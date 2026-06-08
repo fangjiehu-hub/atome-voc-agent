@@ -94,26 +94,31 @@ app.add_middleware(
 
 # Auth: Lark SSO endpoints stay open (login/callback/me/logout).
 from backend.api import auth_sso
-from backend.api.auth_sso import require_auth
+from backend.api.auth_sso import require_admin, require_auth
 
 app.include_router(auth.router)
 app.include_router(auth_sso.router)
 
-# Protected routers — `require_auth` enforces login once AUTH_ENFORCED=true.
-_guard = [Depends(require_auth)]
-app.include_router(monitor.router, dependencies=_guard)
-app.include_router(crawler.router, dependencies=_guard)
-app.include_router(incidents.router, dependencies=_guard)
-app.include_router(alerts.router, dependencies=_guard)
-app.include_router(feedback.router, dependencies=_guard)
-app.include_router(taxonomy.router, dependencies=_guard)
-app.include_router(analytics.router, dependencies=_guard)
-app.include_router(lark_bots.router, dependencies=_guard)
-app.include_router(routing.router, dependencies=_guard)
-# v2 — design-aligned endpoints consumed by the Claude Design frontend
-app.include_router(v2.router, dependencies=_guard)
-app.include_router(alert_delivery.router, dependencies=_guard)
-app.include_router(alert_messages.router, dependencies=_guard)
+# Any authenticated user (viewer+): read/monitoring routers.
+_auth = [Depends(require_auth)]
+# Admin only: configuration / management / cost-bearing operational routers.
+_admin = [Depends(require_admin)]
+
+app.include_router(monitor.router, dependencies=_auth)
+app.include_router(incidents.router, dependencies=_auth)
+app.include_router(alerts.router, dependencies=_auth)
+app.include_router(feedback.router, dependencies=_auth)
+app.include_router(taxonomy.router, dependencies=_auth)
+app.include_router(analytics.router, dependencies=_auth)
+app.include_router(alert_messages.router, dependencies=_auth)
+# v2 — design-aligned endpoints. Mostly read; PATCH /settings is admin-gated
+# at the route level inside v2.py.
+app.include_router(v2.router, dependencies=_auth)
+# Admin-only management surfaces:
+app.include_router(crawler.router, dependencies=_admin)
+app.include_router(lark_bots.router, dependencies=_admin)
+app.include_router(routing.router, dependencies=_admin)
+app.include_router(alert_delivery.router, dependencies=_admin)
 
 
 @app.get("/health")

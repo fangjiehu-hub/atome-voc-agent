@@ -90,6 +90,8 @@ class Settings(BaseSettings):
     # Only members whose email ends with one of these domains may log in
     # (comma-separated). Empty = allow any org member who can authorize the app.
     allowed_email_domains: str = "advancegroup.com"
+    # Comma-separated emails that get the "admin" role; everyone else is "viewer".
+    admin_emails: str = "fangjie.hu@advancegroup.com"
     session_cookie_name: str = "voc_session"
     frontend_base_url: str = "https://atome-voc-v2-frontend.fly.dev"
 

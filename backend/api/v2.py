@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.api.auth_sso import require_admin
 from backend.database import get_db
 from backend.models.app_settings import AppSettings
 from backend.models.correction import Correction
@@ -224,7 +225,11 @@ async def get_settings(db: AsyncSession = Depends(get_db)):
 
 
 @router.patch("/settings", response_model=SettingsResponse)
-async def update_settings(patch: SettingsPatch, db: AsyncSession = Depends(get_db)):
+async def update_settings(
+    patch: SettingsPatch,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
     s = await _get_settings(db)
     if patch.engagementThresholds is not None:
         # basic validation: lowMax < mediumMax, both ≥ 0

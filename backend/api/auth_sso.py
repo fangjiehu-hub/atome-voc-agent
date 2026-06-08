@@ -38,12 +38,18 @@ _STATE_COOKIE = "voc_oauth_state"
 
 # ── session token helpers ────────────────────────────────────────────────────
 
+def _is_admin(email: str | None) -> bool:
+    admins = [e.strip().lower() for e in settings.admin_emails.split(",") if e.strip()]
+    return bool(email) and email.lower() in admins
+
+
 def issue_session_token(user: dict) -> str:
     now = datetime.now(tz=timezone.utc)
     payload = {
         "sub": user.get("open_id") or user.get("user_id") or "",
         "name": user.get("name", ""),
         "email": user.get("email", ""),
+        "role": "admin" if _is_admin(user.get("email")) else "viewer",
         "iss": "atome-voc",
         "aud": "atome-voc-dashboard",
         "iat": now,
@@ -78,6 +84,21 @@ async def require_auth(request: Request) -> dict | None:
     user = current_user(request)
     if settings.auth_enforced and not user:
         raise HTTPException(401, "Authentication required")
+    return user
+
+
+async def require_admin(request: Request) -> dict | None:
+    """Router/route dependency. Requires an admin-role session (config & management).
+
+    When auth is not enforced (local dev) it allows through for convenience.
+    """
+    user = current_user(request)
+    if not settings.auth_enforced:
+        return user
+    if not user:
+        raise HTTPException(401, "Authentication required")
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Admin access required")
     return user
 
 
@@ -175,7 +196,12 @@ async def me(request: Request):
     user = current_user(request)
     if not user:
         raise HTTPException(401, "Not authenticated")
-    return {"name": user.get("name"), "email": user.get("email"), "sub": user.get("sub")}
+    return {
+        "name": user.get("name"),
+        "email": user.get("email"),
+        "sub": user.get("sub"),
+        "role": user.get("role", "viewer"),
+    }
 
 
 @router.post("/logout")

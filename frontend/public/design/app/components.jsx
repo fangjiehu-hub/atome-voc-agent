@@ -30,11 +30,17 @@ function Sidebar({ route, navigate }) {
       { href: "rationale", label: "Logic & Rationale" },
     ]},
     { label: "Admin", items: [
-      { href: "settings",        label: "Settings" },
-      { href: "alert-delivery",  label: "Alert Setting" },
+      { href: "settings",        label: "Settings",      adminOnly: true },
+      { href: "alert-delivery",  label: "Alert Setting", adminOnly: true },
       { href: "log",             label: "Correction Log" },
     ]},
   ];
+
+  // Viewers don't see admin-only management pages (RBAC).
+  const isAdmin = !!(window.VoC && VoC.isAdmin);
+  for (const g of groups) {
+    g.items = g.items.filter((it) => !it.adminOnly || isAdmin);
+  }
 
   return (
     <aside className="bg-[#141c30] px-3.5 py-5 sticky top-0 h-screen overflow-y-auto" data-screen-label="Sidebar">

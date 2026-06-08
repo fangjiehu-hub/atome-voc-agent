@@ -16,6 +16,7 @@
   let CLUSTERS = {};
   let SERVER_SETTINGS = null;     // last /api/v2/settings response (camelCase)
   let DEFAULT_OWNERSHIP = {};     // category_key → owner from server
+  let CURRENT_USER = { role: "viewer" };  // set at boot from /api/auth/me
 
   // ─── helpers (unchanged from v2) ──────────────────────────────────────
   function engagementOf(m) {
@@ -277,6 +278,12 @@
       const probe = await fetch(API_BASE + "/api/v2/settings");
       if (redirectToLoginIfUnauthorized(probe)) return;
 
+      // Fetch the current user's role (admin / viewer) for nav gating.
+      try {
+        const meResp = await fetch(API_BASE + "/api/auth/me");
+        CURRENT_USER = meResp.ok ? await meResp.json() : { role: "viewer" };
+      } catch (e) { CURRENT_USER = { role: "viewer" }; }
+
       const [tax, settings, mentions, clusters, corrections] = await Promise.all([
         fetch(API_BASE + "/api/v2/taxonomy").then((r) => r.json()),
         probe.json(),
@@ -361,6 +368,8 @@
     get MENTIONS() { return MENTIONS; },
     get CLUSTERS() { return CLUSTERS; },
     get DEFAULT_OWNERSHIP() { return DEFAULT_OWNERSHIP; },
+    get currentUser() { return CURRENT_USER; },
+    get isAdmin() { return CURRENT_USER && CURRENT_USER.role === "admin"; },
     get DEFAULT_SETTINGS() { return buildDefaultSettings(); },
     loadSettings, saveSettings, resetSettings,
     loadCorrectionLog, saveCorrectionLog, appendCorrection,
