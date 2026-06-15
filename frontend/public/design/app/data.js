@@ -324,6 +324,7 @@
         isNegative:     m.isNegative,
         sentiment:      m.isNegative === true ? "Negative" : m.isNegative === false ? "Positive" : "Neutral",
         summary:        m.summary || null,
+        aiAnalysis:     m.aiAnalysis || null,
         alertStatus:    m.alertStatus || "Not triggered",
         secondaryTeams: m.secondaryTeams || secondaryTeamsOf(m.category),
       }));

@@ -268,6 +268,18 @@ function MentionCard({ mention, settings, onCorrect, dense, hideWhy }) {
         </div>
         <div className="min-w-0">
           <p className="text-[13px] text-gray-800 leading-relaxed mb-1.5">{view.text}</p>
+          {view.summary && (
+            <div className="mb-1.5 bg-brand-50/50 border border-brand-200/60 rounded-lg px-2.5 py-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-brand-500">AI Summary</span>
+              <p className="text-[12px] text-gray-700 leading-relaxed mt-0.5">{view.summary}</p>
+            </div>
+          )}
+          {view.aiAnalysis && (
+            <div className="mb-1.5 bg-indigo-50/50 border border-indigo-200/60 rounded-lg px-2.5 py-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">AI Analysis</span>
+              <p className="text-[12px] text-gray-700 leading-relaxed mt-0.5">{view.aiAnalysis}</p>
+            </div>
+          )}
           {translation && (
             <p className="text-[12px] text-gray-500 italic mb-1.5 border-l-2 border-brand-300 pl-2">
               <span className="text-[10.5px] font-bold uppercase tracking-wider text-brand-400 not-italic">EN · </span>

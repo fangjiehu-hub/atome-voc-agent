@@ -175,6 +175,8 @@ def _map_record(fields: dict) -> dict | None:
         "engagement_level":   eng_level,
         "category":           category,
         "summary":            _text_value(fields.get("AI Summary")) or None,
+        # Octo Agent's richer AI impact/analysis text (shown in the drawer).
+        "ai_analysis":        _text_value(fields.get("AI Analysis")) or None,
         "is_negative":        is_negative,
         # Octo Agent already did the AI analysis (category / summary / sentiment /
         # severity), so mark these as annotated to skip our LLM re-annotation and
@@ -184,25 +186,19 @@ def _map_record(fields: dict) -> dict | None:
     }
 
 
-async def sync_lark_bitable() -> int:
-    """Fetch new records from the Bitable and upsert into our posts table.
-
-    Returns the number of newly inserted rows.
-    """
+async def fetch_bitable_records() -> list[dict]:
+    """Fetch all records from the configured Bitable (handles auth + pagination)."""
     async with httpx.AsyncClient(timeout=30.0) as client:
         token = await _get_tenant_token(client)
         if not token:
-            return 0
+            return []
 
         headers = {"Authorization": f"Bearer {token}"}
         page_token: str | None = None
         all_records: list[dict] = []
 
         while True:
-            params: dict = {
-                "page_size": PAGE_SIZE,
-                "view_id": VIEW_ID,
-            }
+            params: dict = {"page_size": PAGE_SIZE, "view_id": VIEW_ID}
             if page_token:
                 params["page_token"] = page_token
 
@@ -213,20 +209,26 @@ async def sync_lark_bitable() -> int:
             )
             resp.raise_for_status()
             body = resp.json()
-
             if body.get("code", 0) != 0:
                 logger.error("Bitable API error: %s", body.get("msg"))
                 break
 
             data = body.get("data", {})
             all_records.extend(data.get("items", []))
-
             if not data.get("has_more"):
                 break
             page_token = data.get("page_token")
 
     logger.info("Lark Bitable: fetched %d records", len(all_records))
+    return all_records
 
+
+async def sync_lark_bitable() -> int:
+    """Fetch new records from the Bitable and upsert into our posts table.
+
+    Returns the number of newly inserted rows.
+    """
+    all_records = await fetch_bitable_records()
     if not all_records:
         return 0
 

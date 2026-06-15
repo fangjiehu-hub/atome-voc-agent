@@ -137,6 +137,7 @@ def _mention_dict(
         "text": post.content_text,
         "status": post.mention_status or "New",
         "summary": post.summary,
+        "aiAnalysis": post.ai_analysis,
         "isNegative": post.is_negative,
         "market": post.brand.replace("atome_", "").upper() if post.brand else "PH",
         "url": post.url,

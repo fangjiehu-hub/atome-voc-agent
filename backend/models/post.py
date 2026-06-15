@@ -52,6 +52,8 @@ class Post(Base):
     language: Mapped[str | None] = mapped_column(String(5))  # en/tl/mixed
     summary: Mapped[str | None] = mapped_column(Text)
     ai_explanation: Mapped[str | None] = mapped_column(Text)
+    # Octo Agent's AI impact/analysis text (from the Lark Bitable sync).
+    ai_analysis: Mapped[str | None] = mapped_column(Text)
     annotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # SHA-256 of normalized content_text — lets the annotator reuse a prior
     # annotation for identical content instead of re-calling the LLM.
