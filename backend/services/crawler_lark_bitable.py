@@ -146,6 +146,19 @@ def _map_record(fields: dict) -> dict | None:
     if not content:
         return None
 
+    # Relevance filter: drop false-positives that never mention the brand.
+    # Octo occasionally scrapes unrelated posts (matched on generic keywords like
+    # "overdue"/"collection"). Require "atome" somewhere in title/content/snippet.
+    relevance_blob = " ".join([
+        _text_value(fields.get("Title")),
+        _text_value(fields.get("Raw Content")),
+        _text_value(fields.get("Snippet")),
+        _text_value(fields.get("Hit Keywords")),
+    ]).lower()
+    if "atome" not in relevance_blob:
+        logger.info("Bitable: skipping irrelevant post %s (no brand mention)", post_id[:12])
+        return None
+
     category_raw = _text_value(fields.get("Category")).strip()
     category = CATEGORY_MAP.get(category_raw)  # None if unmapped
 
