@@ -62,6 +62,7 @@ PLATFORM_MAP: dict[str, str] = {
     "Facebook": "facebook",
     "Reddit":   "reddit",
     "Twitter":  "twitter",
+    "X":        "twitter",  # X and Twitter are the same platform
     "TikTok":   "tiktok",
 }
 
