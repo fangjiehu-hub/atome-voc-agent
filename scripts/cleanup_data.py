@@ -35,11 +35,33 @@ async def _count(db, *conds) -> int:
 
 
 async def step_relevance(db) -> None:
-    """Mark posts with no brand mention in content_text as Not Relevant."""
-    no_brand = ~func.lower(func.coalesce(Post.content_text, "")).like("%atome%")
-    cond = and_(no_brand, Post.mention_status != "Not Relevant")
+    """Mark irrelevant Bitable posts Not Relevant — using the SAME criteria as the
+    sync filter (title/content/snippet/keywords), re-checked against the Bitable
+    so we never over-flag legit posts whose brand mention is only in the title."""
+    try:
+        from backend.services.crawler_lark_bitable import _text_value, fetch_bitable_records, is_relevant
+    except Exception as exc:
+        print(f"[relevance] skipped (Bitable module unavailable): {exc}")
+        return
+
+    records = await fetch_bitable_records()
+    if not records:
+        print("[relevance] Bitable returned no records (check LARK_APP_ID/SECRET) — skipped")
+        return
+
+    irrelevant_ids = {
+        _text_value(r.get("fields", {}).get("Post ID"))
+        for r in records
+        if not is_relevant(r.get("fields", {}))
+    }
+    irrelevant_ids.discard("")
+    print(f"[relevance] {len(irrelevant_ids)} Bitable records fail the brand-relevance check")
+    if not irrelevant_ids:
+        return
+
+    cond = and_(Post.post_id.in_(irrelevant_ids), Post.mention_status != "Not Relevant")
     n = await _count(db, cond)
-    print(f"[relevance] {n} posts have no brand mention and aren't yet Not Relevant")
+    print(f"[relevance] {n} matching DB posts not yet marked Not Relevant")
     if n and not DRY_RUN:
         await db.execute(update(Post).where(cond).values(mention_status="Not Relevant"))
         print(f"[relevance] marked {n} as Not Relevant")

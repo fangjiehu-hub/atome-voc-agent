@@ -131,6 +131,22 @@ def _parse_date(cell) -> datetime | None:
     return None
 
 
+def is_relevant(fields: dict) -> bool:
+    """True if the record mentions the brand somewhere (title/content/snippet/keywords).
+
+    Octo occasionally scrapes unrelated posts (matched on generic keywords like
+    "overdue"/"collection"). Shared by the sync filter and the cleanup script so
+    both use identical criteria.
+    """
+    blob = " ".join([
+        _text_value(fields.get("Title")),
+        _text_value(fields.get("Raw Content")),
+        _text_value(fields.get("Snippet")),
+        _text_value(fields.get("Hit Keywords")),
+    ]).lower()
+    return "atome" in blob
+
+
 def _map_record(fields: dict) -> dict | None:
     """Convert a Bitable record dict to our Post insert dict.  Returns None to skip."""
     post_id = _text_value(fields.get("Post ID"))
@@ -148,15 +164,7 @@ def _map_record(fields: dict) -> dict | None:
         return None
 
     # Relevance filter: drop false-positives that never mention the brand.
-    # Octo occasionally scrapes unrelated posts (matched on generic keywords like
-    # "overdue"/"collection"). Require "atome" somewhere in title/content/snippet.
-    relevance_blob = " ".join([
-        _text_value(fields.get("Title")),
-        _text_value(fields.get("Raw Content")),
-        _text_value(fields.get("Snippet")),
-        _text_value(fields.get("Hit Keywords")),
-    ]).lower()
-    if "atome" not in relevance_blob:
+    if not is_relevant(fields):
         logger.info("Bitable: skipping irrelevant post %s (no brand mention)", post_id[:12])
         return None
 
