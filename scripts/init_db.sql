@@ -1,7 +1,7 @@
 -- =============================================================================
 -- Atome VoC Early Warning Agent — Database Initialization
 -- =============================================================================
--- Generated from the running schema (Alembic revision 010). PostgreSQL 17.
+-- Generated from the running schema (Alembic revision 011). PostgreSQL 17.
 --
 -- Contents:
 --   * Full schema: all 14 tables, indexes, constraints
@@ -9,7 +9,7 @@
 --       - taxonomy_categories (13 categories)
 --       - app_settings        (config singleton: thresholds, ownership,
 --                              secondary/CC teams, display defaults, schedules)
---       - alembic_version     (stamped to 010, so `alembic upgrade head`
+--       - alembic_version     (stamped to 011, so `alembic upgrade head`
 --                              recognizes the schema and applies only newer
 --                              migrations later)
 --   * NO runtime / PII data (posts, alerts, incidents, feedback, corrections,
@@ -19,8 +19,10 @@
 --   createdb atome_voc            # or your DB name
 --   psql -d atome_voc -f init_db.sql
 --
--- After this, point the app's DATABASE_URL at the DB. The backend container
--- also runs `alembic upgrade head` on boot, which will be a no-op at rev 010.
+-- After this, point the app's DATABASE_URL at the DB (already at rev 011).
+-- NOTE: bare-metal deploys do NOT auto-migrate — run `alembic upgrade head`
+-- after any future `git pull` that adds migrations. (The Docker image runs it
+-- automatically on boot.)
 --
 -- Roles/ownership are stripped (--no-owner --no-privileges); objects are owned
 -- by whoever runs this script.
@@ -418,7 +420,8 @@ CREATE TABLE public.posts (
     primary_owner character varying(100),
     alert_status character varying(30) DEFAULT 'Not triggered'::character varying,
     alert_triggered_at timestamp with time zone,
-    content_hash character varying(64)
+    content_hash character varying(64),
+    ai_analysis text
 );
 
 
@@ -1034,7 +1037,7 @@ SET row_security = off;
 -- Data for Name: alembic_version; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-INSERT INTO public.alembic_version VALUES ('010');
+INSERT INTO public.alembic_version VALUES ('011');
 
 
 --
