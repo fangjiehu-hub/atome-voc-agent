@@ -69,6 +69,8 @@ Inject via the orchestrator's secret mechanism (env injection / secrets manager)
 | `FRONTEND_BASE_URL` | `https://voc.internal.example.com` | where users land after login |
 | `CORS_ORIGINS` | `https://voc.internal.example.com` | comma-separated; never `*` |
 | `ALLOWED_EMAIL_DOMAINS` | `advancegroup.com` | only these email domains may log in |
+| `ADMIN_EMAILS` | `fangjie.hu@advancegroup.com` | comma-separated admins; everyone else is view-only |
+| `SERVICE_API_KEY` | 32+ random chars (optional) | machine/ops access via `X-Service-Key` header; empty = disabled |
 
 ### Data sources (optional — enable what you use)
 
@@ -91,7 +93,8 @@ Inject via the orchestrator's secret mechanism (env injection / secrets manager)
 
 | Variable | Default |
 |----------|---------|
-| `CRAWL_SCHEDULE_HOURS` | `8,20` (cron hours) |
+| `CRAWL_SCHEDULE_HOURS` / `CRAWL_SCHEDULE_MINUTE` | `10` / `30` → daily sync at 10:30 |
+| `ENABLE_APIFY_CRAWLERS` | `false` (Octo/Bitable is the source) |
 | `TZ` | `Asia/Manila` |
 | `API_HOST` / `API_PORT` | `0.0.0.0` / `8000` |
 
@@ -176,7 +179,50 @@ dashboard with data loaded.
 ## 9. Operations
 
 - **Schema upgrades:** the backend runs `alembic upgrade head` on boot. To run manually: `alembic upgrade head` (uses `DATABASE_URL`).
-- **Crawling:** runs automatically at `CRAWL_SCHEDULE_HOURS`. Manual trigger: `POST /api/crawler/run` (authenticated).
+- **Data sync:** runs automatically once a day at `CRAWL_SCHEDULE_HOURS:CRAWL_SCHEDULE_MINUTE` (default **10:30**, after Octo refreshes the Bitable ~09:00–10:00). Pulls the Lark Bitable → annotate → cluster → alert. The direct Apify crawlers are off unless `ENABLE_APIFY_CRAWLERS=true`.
 - **Alerts:** a 30-minute scheduler fires the daily alert / weekly summary when their configured time matches; history is recorded in `alert_messages` and visible under **Monitor → Alert History**.
 - **Logs:** application logs to stdout (capture via the container runtime). PII is not logged.
 - See `ARCHITECTURE.md` for the full data-flow and module breakdown.
+
+### Authentication & calling protected endpoints
+
+The API authenticates via a **Lark SSO session cookie** (`voc_session`), set after a
+browser login. It does **not** read `Authorization: Bearer` — and `JWT_SECRET` is the
+signing secret, not a token. So `curl -H "Authorization: Bearer ..."` returns
+`401 Authentication required`.
+
+Two ways to reach protected endpoints:
+
+1. **Browser (people):** open the site → Lark SSO login → the cookie is set automatically.
+   Only `@advancegroup.com` accounts; `ADMIN_EMAILS` get admin (config/management),
+   everyone else is view-only.
+2. **Machine / ops (scripts):** set a strong `SERVICE_API_KEY` in `.env`, then send it
+   as the `X-Service-Key` header (treated as admin, bypasses SSO):
+
+   ```bash
+   curl -X POST http://<host>:8000/api/crawler/run \
+     -H "Content-Type: application/json" \
+     -H "X-Service-Key: $SERVICE_API_KEY" \
+     -d '{"platform":"all","lookback_hours":24}'
+   ```
+   Leave `SERVICE_API_KEY` empty to disable this path (SSO only).
+
+### Manually forcing a data sync (no HTTP / no auth)
+
+On the server, run the pipeline function directly:
+
+```bash
+# bare-metal venv:
+python -c "import asyncio; from backend.services.crawler_lark_bitable import crawl_lark_bitable; asyncio.run(crawl_lark_bitable())"
+
+# docker:
+docker compose -f docker-compose.prod.yml exec backend \
+  python -c "import asyncio; from backend.services.crawler_lark_bitable import crawl_lark_bitable; asyncio.run(crawl_lark_bitable())"
+```
+
+### Historical data cleanup (only if pre-fix data was synced)
+
+```bash
+python -m scripts.cleanup_data --dry-run   # preview
+python -m scripts.cleanup_data             # apply (relevance / X→twitter merge / ai_analysis backfill)
+```
