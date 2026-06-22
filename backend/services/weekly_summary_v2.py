@@ -59,7 +59,7 @@ async def generate_and_send_weekly_summary() -> None:
         cutoff = now_utc - timedelta(days=7)
         posts = (
             await db.execute(
-                select(Post).where(Post.created_at >= cutoff)
+                select(Post).where(Post.collected_at >= cutoff)  # newly ingested (not publish date)
             )
         ).scalars().all()
 

@@ -44,7 +44,7 @@ async def generate_and_send_daily_alert() -> None:
         cutoff = now_utc - timedelta(hours=24)
         posts = (
             await db.execute(
-                select(Post).where(Post.created_at >= cutoff)
+                select(Post).where(Post.collected_at >= cutoff)  # newly ingested (not publish date)
             )
         ).scalars().all()
 
