@@ -73,13 +73,17 @@ def build_alert_html(
     title: str,
     taxonomy_label: str,
     body: str,
-    dashboard_url: str = "https://atome-voc-v2-frontend.fly.dev/design",
+    dashboard_url: str | None = None,
 ) -> str:
     """Build a clean HTML email body for VoC alerts.
 
     All dynamic fields are HTML-escaped to prevent injection (audit M-1) — the
     taxonomy/title/body can originate from config or crawled content.
+    The dashboard link defaults to the env's FRONTEND_BASE_URL (per-environment).
     """
+    if dashboard_url is None:
+        base = (settings.frontend_base_url or "").rstrip("/")
+        dashboard_url = f"{base}/design/atome-voc.html" if base else "#"
     from markupsafe import escape
 
     title = str(escape(title))
