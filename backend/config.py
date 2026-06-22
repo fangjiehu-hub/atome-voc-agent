@@ -71,10 +71,14 @@ class Settings(BaseSettings):
     alert_email_from: str = ""
     alert_email_to: str = ""
 
-    # Schedule
-    crawl_schedule_hours: str = "8,20"
+    # Schedule — daily data refresh at crawl_schedule_hours:crawl_schedule_minute
+    # (Octo refreshes the Bitable ~09:00-10:00, so we sync at 10:30 after it).
+    crawl_schedule_hours: str = "10"
+    crawl_schedule_minute: int = 30
     digest_hour: int = 9
     tz: str = "Asia/Manila"
+    # Octo/Bitable is the data source; the direct Apify crawlers are off by default.
+    enable_apify_crawlers: bool = False
 
     # Auth
     jwt_secret: str = "change-me-in-production"

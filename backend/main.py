@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
             _scheduled_crawl,
             "cron",
             hour=hour,
-            minute=0,
+            minute=settings.crawl_schedule_minute,
             id=f"crawl_{hour}",
             replace_existing=True,
         )
@@ -48,13 +48,20 @@ async def lifespan(app: FastAPI):
 
 
 async def _scheduled_crawl():
-    """Run full crawl pipeline: crawl -> save -> annotate -> cluster -> alert."""
-    from backend.services.crawler_reddit import crawl_reddit
-    from backend.services.crawler_twitter import crawl_twitter
+    """Daily data refresh: Lark Bitable sync (Octo Agent) → annotate → cluster → alert.
+
+    Octo refreshes the Bitable ~09:00-10:00; we run after that (default 10:30).
+    The direct Apify crawlers are off by default (Octo/Bitable is the source); set
+    ENABLE_APIFY_CRAWLERS=true to also run them.
+    """
     from backend.services.crawler_lark_bitable import crawl_lark_bitable
 
-    await crawl_reddit(lookback_hours=12)
-    await crawl_twitter(lookback_hours=12)
+    if settings.enable_apify_crawlers:
+        from backend.services.crawler_reddit import crawl_reddit
+        from backend.services.crawler_twitter import crawl_twitter
+        await crawl_reddit(lookback_hours=12)
+        await crawl_twitter(lookback_hours=12)
+
     await crawl_lark_bitable()
 
 
