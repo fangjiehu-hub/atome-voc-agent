@@ -1,16 +1,124 @@
-"""Daily alert service — generates and delivers a daily VoC summary to configured Lark groups."""
+"""Daily alert service — generates and delivers a daily VoC digest."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-import httpx
+from markupsafe import escape
 from sqlalchemy import select
 
+from backend.config import settings as app_config
 from backend.database import async_session
 from backend.models.alert_delivery_config import AlertDeliveryConfig
 from backend.models.alert_message import AlertMessage
 from backend.models.app_settings import AppSettings
 from backend.models.post import Post
+
+
+def _cat_label(key: str | None) -> str:
+    return (key or "uncategorized").replace("_", " ").title()
+
+
+def _safe_url(url: str | None) -> str | None:
+    if isinstance(url, str) and url.strip().lower().startswith(("http://", "https://")):
+        return url.strip()
+    return None
+
+
+def build_daily_digest(posts: list[Post], date_str: str) -> tuple[str, str, str]:
+    """Return (title, text_body, html_body) for a daily VoC digest.
+
+    Content: overview (total + by category), sentiment split, and the top
+    negative / high-engagement posts with their AI summary and source link.
+    """
+    total = len(posts)
+    by_cat: dict[str, int] = {}
+    neg = pos = neu = 0
+    for p in posts:
+        if p.category:
+            by_cat[p.category] = by_cat.get(p.category, 0) + 1
+        if p.is_negative is True:
+            neg += 1
+        elif p.is_negative is False:
+            pos += 1
+        else:
+            neu += 1
+    cats = sorted(by_cat.items(), key=lambda kv: -kv[1])
+
+    negatives = sorted(
+        [p for p in posts if p.is_negative is True],
+        key=lambda p: (p.engagement_score or 0), reverse=True,
+    )
+    top = negatives[:5] or sorted(posts, key=lambda p: (p.engagement_score or 0), reverse=True)[:5]
+
+    title = f"VoC Daily Alert — {date_str}"
+
+    # ── plain text (Lark group) ──
+    tl = [f"Atome VoC Daily Alert — {date_str}",
+          f"New posts (24h): {total}  |  Negative {neg} · Neutral {neu} · Positive {pos}", ""]
+    if cats:
+        tl.append("By category:")
+        tl += [f"  {_cat_label(c)}: {n}" for c, n in cats]
+    if top:
+        tl += ["", "Top items:"]
+        for p in top:
+            tl.append(f"  [{_cat_label(p.category)}/{p.platform}] {(p.summary or p.content_text or '')[:140]}")
+            if _safe_url(p.url):
+                tl.append(f"    {p.url}")
+    text_body = "\n".join(tl)
+
+    # ── rich HTML (email) ──
+    base = (app_config.frontend_base_url or "").rstrip("/")
+    dash = f"{base}/design/atome-voc.html" if base else "#"
+
+    cat_rows = "".join(
+        f'<tr><td style="padding:4px 10px;border-bottom:1px solid #f0f0f0;">{escape(_cat_label(c))}</td>'
+        f'<td style="padding:4px 10px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:600;">{n}</td></tr>'
+        for c, n in cats
+    ) or '<tr><td style="padding:4px 10px;color:#9ca3af;">No categorised posts.</td></tr>'
+
+    def _card(p: Post) -> str:
+        text = escape((p.summary or p.content_text or "")[:240])
+        url = _safe_url(p.url)
+        link = (f'<a href="{escape(url)}" style="color:#2563eb;font-size:11px;text-decoration:none;">View source →</a>'
+                if url else '<span style="color:#9ca3af;font-size:11px;">no link</span>')
+        return (
+            '<div style="border:1px solid #fecaca;background:#fef2f2;border-radius:8px;padding:10px 12px;margin-bottom:8px;">'
+            f'<div style="font-size:11px;color:#991b1b;font-weight:700;margin-bottom:3px;">'
+            f'{escape(_cat_label(p.category))} · {escape((p.platform or "").title())} · eng {p.engagement_score or 0}</div>'
+            f'<div style="font-size:12.5px;color:#374151;line-height:1.5;">{text}</div>'
+            f'<div style="margin-top:4px;">{link}</div></div>'
+        )
+
+    cards = "".join(_card(p) for p in top) or '<div style="color:#9ca3af;font-size:12px;">No notable items.</div>'
+
+    html_body = f"""
+<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f5;margin:0;padding:20px;">
+<div style="max-width:640px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+  <div style="background:#141c30;padding:22px 28px;">
+    <div style="color:#f0ff5f;font-size:18px;font-weight:700;">Atome VoC — Daily Alert</div>
+    <div style="color:rgba(255,255,255,.6);font-size:13px;margin-top:2px;">{escape(date_str)}</div>
+  </div>
+  <div style="padding:24px 28px;">
+    <div style="font-size:14px;color:#111;margin-bottom:14px;">
+      <strong>{total}</strong> new posts in the last 24h
+    </div>
+    <div style="font-size:12.5px;margin-bottom:18px;">
+      <span style="background:#fef2f2;color:#991b1b;padding:3px 9px;border-radius:12px;font-weight:600;">🔴 Negative {neg}</span>&nbsp;
+      <span style="background:#f3f4f6;color:#4b5563;padding:3px 9px;border-radius:12px;font-weight:600;">⚪ Neutral {neu}</span>&nbsp;
+      <span style="background:#ecfdf5;color:#047857;padding:3px 9px;border-radius:12px;font-weight:600;">🟢 Positive {pos}</span>
+    </div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;margin-bottom:6px;">By category</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:20px;">{cat_rows}</table>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;margin-bottom:8px;">Top negative / high-engagement</div>
+    {cards}
+    <div style="margin-top:20px;">
+      <a href="{escape(dash)}" style="display:inline-block;background:#141c30;color:#f0ff5f;padding:10px 20px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;">Open Dashboard →</a>
+    </div>
+  </div>
+  <div style="padding:14px 28px;border-top:1px solid #f0f0f0;font-size:11px;color:#9ca3af;">Atome VoC Early Warning Agent · automated daily digest</div>
+</div></body></html>"""
+    return title, text_body, html_body
 
 
 async def generate_and_send_daily_alert() -> None:
@@ -48,25 +156,9 @@ async def generate_and_send_daily_alert() -> None:
             )
         ).scalars().all()
 
-        total = len(posts)
-        # Count by category
-        by_category: dict[str, int] = {}
-        for p in posts:
-            if p.category:
-                by_category[p.category] = by_category.get(p.category, 0) + 1
-
-        # 5. Build message body
+        # 5. Build the digest (overview + sentiment + top items)
         date_str = now_utc.strftime("%Y-%m-%d")
-        lines = [f"Atome VoC Daily Alert — {date_str}", f"Total posts in last 24h: {total}", ""]
-        if by_category:
-            lines.append("Breakdown by category:")
-            for cat, cnt in sorted(by_category.items(), key=lambda kv: -kv[1]):
-                lines.append(f"  {cat}: {cnt}")
-        else:
-            lines.append("No categorised posts in the last 24h.")
-
-        message_body = "\n".join(lines)
-        title = f"VoC Daily Alert — {date_str}"
+        title, message_body, html_body = build_daily_digest(posts, date_str)
 
         # 6. Send to each enabled Lark group webhook
         configs = (
@@ -95,7 +187,7 @@ async def generate_and_send_daily_alert() -> None:
             await db.commit()
             return
 
-        from backend.services.email_sender import build_alert_html, send_alert_email
+        from backend.services.email_sender import send_alert_email
 
         email_configs = [
             c for c in configs
@@ -146,11 +238,7 @@ async def generate_and_send_daily_alert() -> None:
                 to_address=config.email_address,
                 subject=f"[Atome VoC] {title}",
                 body_text=message_body,
-                body_html=build_alert_html(
-                    title=title,
-                    taxonomy_label=config.taxonomy,
-                    body=message_body,
-                ),
+                body_html=html_body,
             )
             alert_msg.status = "sent" if success else "failed"
             alert_msg.sent_at = datetime.now(tz=timezone.utc) if success else None
