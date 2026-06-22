@@ -72,7 +72,12 @@ def _decode_session(token: str) -> dict | None:
 
 
 def current_user(request: Request) -> dict | None:
-    """Return the session user from the cookie, or None."""
+    """Return the session user from the cookie (or service-key header), or None."""
+    # Machine/ops access: a valid X-Service-Key grants admin (bypasses SSO).
+    svc = request.headers.get("X-Service-Key")
+    if svc and settings.service_api_key and secrets.compare_digest(svc, settings.service_api_key):
+        return {"sub": "service", "name": "service", "email": "service@internal", "role": "admin"}
+
     token = request.cookies.get(settings.session_cookie_name)
     if not token:
         return None

@@ -96,6 +96,9 @@ class Settings(BaseSettings):
     allowed_email_domains: str = "advancegroup.com"
     # Comma-separated emails that get the "admin" role; everyone else is "viewer".
     admin_emails: str = "fangjie.hu@advancegroup.com"
+    # Optional machine/ops access: requests with header X-Service-Key == this value
+    # are treated as admin (bypasses SSO). Empty = disabled. Use a strong random value.
+    service_api_key: str = ""
     session_cookie_name: str = "voc_session"
     frontend_base_url: str = "https://atome-voc-v2-frontend.fly.dev"
 
