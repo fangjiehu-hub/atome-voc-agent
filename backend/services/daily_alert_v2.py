@@ -24,11 +24,11 @@ def _safe_url(url: str | None) -> str | None:
     return None
 
 
-def build_daily_digest(posts: list[Post], date_str: str) -> tuple[str, str, str]:
-    """Return (title, text_body, html_body) for a daily VoC digest.
+def build_daily_digest(posts: list[Post], date_str: str, headline: str = "new posts") -> tuple[str, str, str]:
+    """Return (title, text_body, html_body) for a daily VoC digest of `posts`.
 
-    Content: overview (total + by category), sentiment split, and the top
-    negative / high-engagement posts with their AI summary and source link.
+    Content: overview count, by-category table, sentiment split, and the posts
+    themselves (sorted by engagement) with AI summary + source link.
     """
     total = len(posts)
     by_cat: dict[str, int] = {}
@@ -44,17 +44,13 @@ def build_daily_digest(posts: list[Post], date_str: str) -> tuple[str, str, str]
             neu += 1
     cats = sorted(by_cat.items(), key=lambda kv: -kv[1])
 
-    negatives = sorted(
-        [p for p in posts if p.is_negative is True],
-        key=lambda p: (p.engagement_score or 0), reverse=True,
-    )
-    top = negatives[:5] or sorted(posts, key=lambda p: (p.engagement_score or 0), reverse=True)[:5]
+    top = sorted(posts, key=lambda p: (p.engagement_score or 0), reverse=True)[:8]
 
     title = f"VoC Daily Alert — {date_str}"
 
     # ── plain text (Lark group) ──
     tl = [f"Atome VoC Daily Alert — {date_str}",
-          f"New posts (24h): {total}  |  Negative {neg} · Neutral {neu} · Positive {pos}", ""]
+          f"{total} {headline} (24h)  |  Negative {neg} · Neutral {neu} · Positive {pos}", ""]
     if cats:
         tl.append("By category:")
         tl += [f"  {_cat_label(c)}: {n}" for c, n in cats]
@@ -81,8 +77,9 @@ def build_daily_digest(posts: list[Post], date_str: str) -> tuple[str, str, str]
         url = _safe_url(p.url)
         link = (f'<a href="{escape(url)}" style="color:#2563eb;font-size:11px;text-decoration:none;">View source →</a>'
                 if url else '<span style="color:#9ca3af;font-size:11px;">no link</span>')
+        border, bg = ("#fecaca", "#fef2f2") if p.is_negative is True else ("#e5e7eb", "#f9fafb")
         return (
-            '<div style="border:1px solid #fecaca;background:#fef2f2;border-radius:8px;padding:10px 12px;margin-bottom:8px;">'
+            f'<div style="border:1px solid {border};background:{bg};border-radius:8px;padding:10px 12px;margin-bottom:8px;">'
             f'<div style="font-size:11px;color:#991b1b;font-weight:700;margin-bottom:3px;">'
             f'{escape(_cat_label(p.category))} · {escape((p.platform or "").title())} · eng {p.engagement_score or 0}</div>'
             f'<div style="font-size:12.5px;color:#374151;line-height:1.5;">{text}</div>'
@@ -101,7 +98,7 @@ def build_daily_digest(posts: list[Post], date_str: str) -> tuple[str, str, str]
   </div>
   <div style="padding:24px 28px;">
     <div style="font-size:14px;color:#111;margin-bottom:14px;">
-      <strong>{total}</strong> new posts in the last 24h
+      <strong>{total}</strong> {escape(headline)} in the last 24h
     </div>
     <div style="font-size:12.5px;margin-bottom:18px;">
       <span style="background:#fef2f2;color:#991b1b;padding:3px 9px;border-radius:12px;font-weight:600;">🔴 Negative {neg}</span>&nbsp;
@@ -156,11 +153,28 @@ async def generate_and_send_daily_alert() -> None:
             )
         ).scalars().all()
 
-        # 5. Build the digest (overview + sentiment + top items)
         date_str = now_utc.strftime("%Y-%m-%d")
-        title, message_body, html_body = build_daily_digest(posts, date_str)
+        generated_at = now_utc
 
-        # 6. Send to each enabled Lark group webhook
+        # 5. Exception-based: only fire if there are HIGH-engagement posts today.
+        #    No high-engagement posts → send nothing (record a skip for audit/dedup).
+        high_posts = [p for p in posts if (p.engagement_level or "").lower() == "high"]
+        if not high_posts:
+            db.add(AlertMessage(
+                alert_type="daily_alert",
+                title=f"VoC Daily Alert — {date_str}",
+                message_body="No high-engagement posts in the last 24h — not sent.",
+                status="skipped",
+                generated_at=generated_at,
+            ))
+            await db.commit()
+            return
+
+        title, message_body, html_body = build_daily_digest(
+            high_posts, date_str, headline="high-engagement posts"
+        )
+
+        # 6. Resolve delivery channels
         configs = (
             await db.execute(
                 select(AlertDeliveryConfig).where(AlertDeliveryConfig.enabled == True)
@@ -171,28 +185,20 @@ async def generate_and_send_daily_alert() -> None:
             c for c in configs
             if c.delivery_channels and "lark_group" in c.delivery_channels and c.lark_group_webhook
         ]
-
-        generated_at = now_utc
-
-        if not lark_group_configs:
-            # Record a skipped message so we don't retry today
-            skipped = AlertMessage(
-                alert_type="daily_alert",
-                title=title,
-                message_body=message_body,
-                status="skipped",
-                generated_at=generated_at,
-            )
-            db.add(skipped)
-            await db.commit()
-            return
-
         from backend.services.email_sender import send_alert_email
-
         email_configs = [
             c for c in configs
             if c.delivery_channels and "email" in c.delivery_channels and c.email_address
         ]
+
+        if not lark_group_configs and not email_configs:
+            # High-engagement posts exist but nowhere to send — record skip.
+            db.add(AlertMessage(
+                alert_type="daily_alert", title=title, message_body=message_body,
+                status="skipped", generated_at=generated_at,
+            ))
+            await db.commit()
+            return
 
         for config in lark_group_configs:
             alert_msg = AlertMessage(
