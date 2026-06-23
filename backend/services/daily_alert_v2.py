@@ -63,8 +63,7 @@ def build_daily_digest(posts: list[Post], date_str: str, headline: str = "new po
     text_body = "\n".join(tl)
 
     # ── rich HTML (email) ──
-    base = (app_config.frontend_base_url or "").rstrip("/")
-    dash = f"{base}/design/atome-voc.html" if base else "#"
+    dash = app_config.dashboard_url or "#"
 
     cat_rows = "".join(
         f'<tr><td style="padding:4px 10px;border-bottom:1px solid #f0f0f0;">{escape(_cat_label(c))}</td>'

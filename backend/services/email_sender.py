@@ -82,8 +82,7 @@ def build_alert_html(
     The dashboard link defaults to the env's FRONTEND_BASE_URL (per-environment).
     """
     if dashboard_url is None:
-        base = (settings.frontend_base_url or "").rstrip("/")
-        dashboard_url = f"{base}/design/atome-voc.html" if base else "#"
+        dashboard_url = settings.dashboard_url or "#"
     from markupsafe import escape
 
     title = str(escape(title))
