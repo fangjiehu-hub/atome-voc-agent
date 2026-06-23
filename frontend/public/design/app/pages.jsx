@@ -249,8 +249,8 @@ function OverviewPage({ settings, openDrillDown, openCorrection, navigate }) {
         </div>
       </div>
 
-      {/* Bottom row: Top categories + Items Needing Attention preview */}
-      <div className="grid grid-cols-[1fr_1fr] gap-4 mb-4">
+      {/* Bottom: Top categories + Items Needing Attention preview — stacked vertically */}
+      <div className="space-y-5 mb-4">
         {/* Top categories */}
         <div className={cardCls + " p-5"}>
           <div className="mb-3">
@@ -326,13 +326,13 @@ function MentionsPage({ settings, openCorrection }) {
       if (lv !== filterLevel) return false;
     }
     return true;
-  }).sort((a, b) => VoC.engagementOf(b) - VoC.engagementOf(a));
+  }).sort((a, b) => new Date(b.created) - new Date(a.created));
 
   return (
     <div>
       <DataFreshnessBanner settings={settings} />
       <PageHeader title="All Posts with Filter"
-                  subtitle={`${filtered.length} of ${VoC.MENTIONS.length} posts collected · sorted by engagement`} />
+                  subtitle={`${filtered.length} of ${VoC.MENTIONS.length} posts collected · sorted by time (newest first)`} />
 
       <div className={cardCls + " p-4 mb-4 flex flex-wrap gap-2.5 items-center"}>
         <span className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold mr-1">Filter</span>
@@ -349,7 +349,7 @@ function MentionsPage({ settings, openCorrection }) {
         <FilterSelect label="Alert" value={filterAlert} onChange={setFilterAlert}
           options={[{ v: "all", l: "All alerts" }, { v: "Not triggered", l: "Not triggered" }, { v: "Triggered", l: "Triggered" }, { v: "Acknowledged", l: "Acknowledged" }, { v: "Resolved", l: "Resolved" }]} />
         <div className="flex-1" />
-        <div className="text-[11.5px] text-gray-500">Sorted by engagement</div>
+        <div className="text-[11.5px] text-gray-500">Sorted by time (newest first)</div>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -388,7 +388,7 @@ function ActionQueuePage({ settings, openDrillDown, openCorrection }) {
     if (filterCat !== "all" && r.m.category !== filterCat) return false;
     if (filterOwner !== "all" && r.routing.owner !== filterOwner) return false;
     return true;
-  }).sort((a, b) => b.eng - a.eng);
+  }).sort((a, b) => new Date(b.m.created) - new Date(a.m.created));
 
   // Cluster view — group attention mentions
   const clusterMap = {};
@@ -396,12 +396,13 @@ function ActionQueuePage({ settings, openDrillDown, openCorrection }) {
     const cid = r.m.clusterId || ("single_" + r.m.id);
     if (!clusterMap[cid]) {
       const info = VoC.CLUSTERS[cid] || { topic: (r.m.text || "").slice(0, 80) + "…", category: r.m.category };
-      clusterMap[cid] = { clusterId: cid, topic: info.topic, category: info.category, rows: [], totalEng: 0 };
+      clusterMap[cid] = { clusterId: cid, topic: info.topic, category: info.category, rows: [], totalEng: 0, lastSeen: r.m.created };
     }
     clusterMap[cid].rows.push(r);
     clusterMap[cid].totalEng += r.eng;
+    if (r.m.created > clusterMap[cid].lastSeen) clusterMap[cid].lastSeen = r.m.created;
   }
-  const clusterView = Object.values(clusterMap).sort((a, b) => b.totalEng - a.totalEng);
+  const clusterView = Object.values(clusterMap).sort((a, b) => new Date(b.lastSeen) - new Date(a.lastSeen));
 
   const empty = view === "posts" ? attentionMentions.length === 0 : clusterView.length === 0;
 
@@ -444,7 +445,7 @@ function ActionQueuePage({ settings, openDrillDown, openCorrection }) {
         <FilterSelect label="Owner" value={filterOwner} onChange={setFilterOwner}
           options={[{ v: "all", l: "All owners" }, ...owners.map((o) => ({ v: o, l: o }))]} />
         <div className="flex-1" />
-        <div className="text-[11.5px] text-gray-500">{attentionMentions.length} item{attentionMentions.length !== 1 ? "s" : ""} · sorted by engagement</div>
+        <div className="text-[11.5px] text-gray-500">{attentionMentions.length} item{attentionMentions.length !== 1 ? "s" : ""} · sorted by time (newest first)</div>
       </div>
 
       {/* CLUSTERS view */}
@@ -1179,113 +1180,86 @@ const CHANNEL_LABELS = { lark_group: "Lark Group", email: "Email" };
 const THRESHOLD_OPTIONS = ["Low", "Medium", "High"];
 
 function AlertDeliveryPage({ settings, navigate, updateSettings }) {
-  const [configs, setConfigs] = useP([]);
+  const [emails, setEmails] = useP([]);
+  const [groups, setGroups] = useP([]);
   const [loading, setLoading] = useP(true);
   const [fetchErr, setFetchErr] = useP(null);
-  const [editTarget, setEditTarget] = useP(null); // { config } | { taxonomy } for new
-  const [testState, setTestState] = useP({}); // configId -> { loading, success, message }
+  const [testState, setTestState] = useP({}); // recipientId -> { loading, success, message }
+  const [editTarget, setEditTarget] = useP(null); // { channel, item|null }
 
-  // Schedule config local state
-  const [schedule, setSchedule] = useP({
-    daily: {
-      enabled:  settings.dailyAlertEnabled  ?? true,
-      time:     settings.dailyAlertTime     || "09:00",
-      timezone: settings.dailyAlertTimezone || "Asia/Singapore",
-    },
-    weekly: {
-      enabled:  settings.weeklySummaryEnabled  ?? true,
-      day:      settings.weeklySummaryDay      || "Monday",
-      time:     settings.weeklySummaryTime     || "09:00",
-      timezone: settings.weeklySummaryTimezone || "Asia/Singapore",
-    },
-  });
-  const [scheduleSaving, setScheduleSaving] = useP(false);
-  const [scheduleSaveResult, setScheduleSaveResult] = useP(null); // { success, message }
-
-  async function saveSchedule(section) {
-    setScheduleSaving(section);
-    const patch = section === "daily" ? {
-      dailyAlertEnabled:  schedule.daily.enabled,
-      dailyAlertTime:     schedule.daily.time,
-      dailyAlertTimezone: schedule.daily.timezone,
-    } : {
-      weeklySummaryEnabled:  schedule.weekly.enabled,
-      weeklySummaryDay:      schedule.weekly.day,
-      weeklySummaryTime:     schedule.weekly.time,
-      weeklySummaryTimezone: schedule.weekly.timezone,
-    };
-    try {
-      const r = await fetch("/api/v2/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      });
-      if (!r.ok) { setScheduleSaveResult({ success: false, message: "Save failed." }); return; }
-      if (updateSettings) updateSettings({ ...settings, ...patch });
-      setScheduleSaveResult({ success: true, message: "Saved." });
-    } catch { setScheduleSaveResult({ success: false, message: "Save failed — check backend." }); }
-    finally { setScheduleSaving(false); }
-  }
-
-  function loadConfigs() {
+  function loadRecipients() {
     setLoading(true);
-    fetch("/api/v2/alert-delivery-configs")
-      .then((r) => r.json())
-      .then((d) => { setConfigs(d.items || []); setLoading(false); })
-      .catch(() => { setFetchErr("Could not load from /api/v2/alert-delivery-configs. Backend may be unreachable."); setLoading(false); });
+    setFetchErr(null);
+    Promise.all([
+      fetch("/api/v2/alert-recipients?channel=email").then((r) => r.json()),
+      fetch("/api/v2/alert-recipients?channel=lark_group").then((r) => r.json()),
+    ])
+      .then(([e, g]) => {
+        setEmails(e.items || []);
+        setGroups(g.items || []);
+        setLoading(false);
+      })
+      .catch(() => {
+        setFetchErr("Could not load from /api/v2/alert-recipients. Backend may be unreachable.");
+        setLoading(false);
+      });
   }
-  useE(() => { loadConfigs(); }, []);
+  useE(() => { loadRecipients(); }, []);
 
-  // Merge taxonomy list with existing configs
-  const rows = useM(() => {
-    const byTax = {};
-    for (const c of configs) byTax[c.taxonomy] = c;
-    return VoC.TAXONOMY.map((t) => ({ taxonomy: t, config: byTax[t.key] || null }));
-  }, [configs]);
+  function replaceItem(channel, item) {
+    const setter = channel === "email" ? setEmails : setGroups;
+    setter((prev) => prev.map((x) => x.id === item.id ? item : x));
+  }
+  function removeItem(channel, id) {
+    const setter = channel === "email" ? setEmails : setGroups;
+    setter((prev) => prev.filter((x) => x.id !== id));
+  }
+  function addItem(channel, item) {
+    const setter = channel === "email" ? setEmails : setGroups;
+    setter((prev) => [...prev, item]);
+  }
 
-  async function handleToggle(config) {
+  async function handleToggle(item) {
     try {
-      const r = await fetch(`/api/v2/alert-delivery-configs/${config.id}/toggle`, { method: "PATCH" });
+      const r = await fetch(`/api/v2/alert-recipients/${item.id}/toggle`, { method: "PATCH" });
       const updated = await r.json();
-      setConfigs((prev) => prev.map((c) => c.id === updated.id ? updated : c));
+      replaceItem(item.channel, updated);
     } catch { alert("Toggle failed. Check that the backend is reachable."); }
   }
 
-  async function handleDelete(id) {
-    if (!confirm("Delete this alert delivery config?")) return;
+  async function handleDelete(item) {
+    if (!confirm("Delete this recipient?")) return;
     try {
-      await fetch(`/api/v2/alert-delivery-configs/${id}`, { method: "DELETE" });
-      setConfigs((prev) => prev.filter((c) => c.id !== id));
+      await fetch(`/api/v2/alert-recipients/${item.id}`, { method: "DELETE" });
+      removeItem(item.channel, item.id);
     } catch { alert("Delete failed."); }
   }
 
-  async function handleTestGroup(id) {
-    setTestState((p) => ({ ...p, [`${id}_lark`]: { loading: true } }));
+  async function handleTest(item) {
+    setTestState((p) => ({ ...p, [item.id]: { loading: true } }));
     try {
-      const r = await fetch(`/api/v2/alert-delivery-configs/${id}/test-group`, { method: "POST" });
-      const d = await r.json();
-      setTestState((p) => ({ ...p, [`${id}_lark`]: d }));
-    } catch { setTestState((p) => ({ ...p, [`${id}_lark`]: { success: false, message: "Request failed" } })); }
+      const r = await fetch(`/api/v2/alert-recipients/${item.id}/test`, { method: "POST" });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setTestState((p) => ({ ...p, [item.id]: { success: false, message: d.detail || "Test failed" } }));
+      } else {
+        setTestState((p) => ({ ...p, [item.id]: d }));
+      }
+    } catch { setTestState((p) => ({ ...p, [item.id]: { success: false, message: "Request failed" } })); }
   }
 
-  async function handleTestEmail(id) {
-    setTestState((p) => ({ ...p, [`${id}_email`]: { loading: true } }));
-    try {
-      const r = await fetch(`/api/v2/alert-delivery-configs/${id}/test-email`, { method: "POST" });
-      const d = await r.json();
-      setTestState((p) => ({ ...p, [`${id}_email`]: d }));
-    } catch { setTestState((p) => ({ ...p, [`${id}_email`]: { success: false, message: "Request failed" } })); }
-  }
-
-  async function handleSaveConfig(form) {
+  async function handleSave(form) {
     const isNew = !form.id;
-    const url = isNew ? "/api/v2/alert-delivery-configs" : `/api/v2/alert-delivery-configs/${form.id}`;
+    const url = isNew ? "/api/v2/alert-recipients" : `/api/v2/alert-recipients/${form.id}`;
     const method = isNew ? "POST" : "PUT";
+    const body = isNew
+      ? { channel: form.channel, target: form.target, label: form.label, enabled: form.enabled }
+      : { target: form.target, label: form.label, enabled: form.enabled };
     try {
       const r = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(body),
       });
       if (!r.ok) {
         const err = await r.json().catch(() => ({}));
@@ -1293,115 +1267,98 @@ function AlertDeliveryPage({ settings, navigate, updateSettings }) {
         return;
       }
       const saved = await r.json();
-      setConfigs((prev) =>
-        isNew ? [...prev, saved] : prev.map((c) => c.id === saved.id ? saved : c)
-      );
+      if (isNew) addItem(form.channel, saved);
+      else replaceItem(form.channel, saved);
       setEditTarget(null);
     } catch { alert("Save failed — check backend connection."); }
   }
 
-  const TZ_OPTIONS = ["Asia/Singapore", "Asia/Manila", "UTC"];
-  const DAY_OPTIONS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+  function maskWebhook(url) {
+    if (!url) return "—";
+    const s = String(url);
+    if (s.length <= 12) return "••••" + s.slice(-4);
+    return "https://…/" + s.slice(-8);
+  }
+
+  function Toggle({ on, onClick }) {
+    return (
+      <button type="button" onClick={onClick}
+        style={{ width: 36, height: 20, borderRadius: 10, flexShrink: 0, position: "relative", transition: "background 0.15s", background: on ? "#f0ff5f" : "#D1D5DB", border: "none", padding: 0, cursor: "pointer" }}
+        title={on ? "Click to disable" : "Click to enable"}>
+        <span style={{
+          position: "absolute", top: 2, left: on ? 18 : 2,
+          width: 16, height: 16, borderRadius: "50%", background: on ? "#141c30" : "white",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.15s"
+        }} />
+      </button>
+    );
+  }
+
+  function RecipientRow({ item }) {
+    const ts = testState[item.id];
+    const isEmail = item.channel === "email";
+    return (
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 last:border-b-0 hover:bg-gray-50/50">
+        <Toggle on={item.enabled} onClick={() => handleToggle(item)} />
+        <div className="min-w-0 flex-1">
+          <div className="text-[13px] font-semibold text-gray-900 truncate">
+            {item.label || (isEmail ? item.target : "(unnamed group)")}
+          </div>
+          <div className="text-[11.5px] text-gray-500 truncate font-mono">
+            {isEmail ? item.target : maskWebhook(item.target)}
+          </div>
+        </div>
+        {ts && (
+          <div className={"text-[11px] whitespace-nowrap " + (ts.loading ? "text-gray-400" : ts.success ? "text-green-700" : "text-red-600")}>
+            {ts.loading ? "Sending…" : (ts.success ? "✓ " + (ts.message || "Sent") : "✗ " + (ts.message || "Failed"))}
+          </div>
+        )}
+        <div className="flex items-center gap-1 shrink-0">
+          <button onClick={() => handleTest(item)}
+            className="text-[11.5px] text-indigo-600 hover:text-indigo-800 px-2 py-1 rounded hover:bg-indigo-50 font-medium">
+            Test
+          </button>
+          <button onClick={() => setEditTarget({ channel: item.channel, item })}
+            className="text-[11.5px] text-gray-600 hover:text-gray-900 px-2 py-1 rounded hover:bg-gray-100 font-medium">
+            Edit
+          </button>
+          <button onClick={() => handleDelete(item)}
+            className="text-[11.5px] text-red-500 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50">
+            ✕
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  function RecipientSection({ channel, title, subtitle, items, addLabel, emptyLabel }) {
+    return (
+      <div className={cardCls + " overflow-hidden mb-5"}>
+        <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-gray-100">
+          <div>
+            <h3 className={sectionTitleCls}>{title}</h3>
+            <div className={sectionSubCls}>{subtitle}</div>
+          </div>
+          <button onClick={() => setEditTarget({ channel, item: null })}
+            className="bg-[#141c30] text-[#f0ff5f] px-3 py-1.5 rounded-lg text-[12.5px] font-semibold hover:opacity-80 whitespace-nowrap">
+            {addLabel}
+          </button>
+        </div>
+        {items.length === 0 ? (
+          <div className="px-4 py-6 text-center text-gray-400 text-[12.5px]">{emptyLabel}</div>
+        ) : (
+          <div>{items.map((it) => <RecipientRow key={it.id} item={it} />)}</div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div>
       <PageHeader
         title="Alert Setting"
-        subtitle="Configure when and where VoC alerts are delivered. Set digest schedules at the top, then configure per-category routing below."
+        subtitle="High-engagement posts are pushed to these email recipients and Lark groups. Trigger uses Settings → Engagement thresholds (checked daily)."
       />
-
-      {/* Schedule config card */}
-      <div className={cardCls + " p-6 mb-5"}>
-        <h3 className={sectionTitleCls + " mb-4"}>Digest Schedule</h3>
-        {scheduleSaveResult && (
-          <div className={"text-[12.5px] mb-3 " + (scheduleSaveResult.success ? "text-green-700" : "text-red-600")}>
-            {scheduleSaveResult.success ? "✓ " : "✗ "}{scheduleSaveResult.message}
-          </div>
-        )}
-        <div className="grid grid-cols-2 gap-8">
-          {/* Daily Alert */}
-          <div>
-            <div className={sectionTitleCls + " text-[13px] mb-3"}>Daily Alert</div>
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <button type="button"
-                  onClick={() => setSchedule((s) => ({ ...s, daily: { ...s.daily, enabled: !s.daily.enabled } }))}
-                  style={{ width: 36, height: 20, borderRadius: 10, flexShrink: 0, position: "relative", transition: "background 0.15s", background: schedule.daily.enabled ? "#f0ff5f" : "#D1D5DB", border: "none", padding: 0, cursor: "pointer" }}>
-                  <span style={{
-                    position: "absolute", top: 2, left: schedule.daily.enabled ? 18 : 2,
-                    width: 16, height: 16, borderRadius: "50%", background: schedule.daily.enabled ? "#141c30" : "white",
-                    boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.15s"
-                  }} />
-                </button>
-                <span className="text-[13px] text-gray-700 font-medium">{schedule.daily.enabled ? "Enabled" : "Disabled"}</span>
-              </div>
-              <div>
-                <label className="block text-[12px] font-semibold text-gray-700 mb-1">Send Time</label>
-                <input type="time" value={schedule.daily.time}
-                  onChange={(e) => setSchedule((s) => ({ ...s, daily: { ...s.daily, time: e.target.value } }))}
-                  className="settings-input w-full" />
-              </div>
-              <div>
-                <label className="block text-[12px] font-semibold text-gray-700 mb-1">Timezone</label>
-                <select value={schedule.daily.timezone}
-                  onChange={(e) => setSchedule((s) => ({ ...s, daily: { ...s.daily, timezone: e.target.value } }))}
-                  className="settings-input w-full">
-                  {TZ_OPTIONS.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
-                </select>
-              </div>
-              <button onClick={() => saveSchedule("daily")} disabled={scheduleSaving === "daily"}
-                className="bg-[#141c30] text-[#f0ff5f] px-4 py-2 rounded-lg text-[13px] font-semibold hover:opacity-80 disabled:opacity-40">
-                {scheduleSaving === "daily" ? "Saving…" : "Save Schedule"}
-              </button>
-            </div>
-          </div>
-
-          {/* Weekly Summary */}
-          <div>
-            <div className={sectionTitleCls + " text-[13px] mb-3"}>Weekly Summary</div>
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <button type="button"
-                  onClick={() => setSchedule((s) => ({ ...s, weekly: { ...s.weekly, enabled: !s.weekly.enabled } }))}
-                  style={{ width: 36, height: 20, borderRadius: 10, flexShrink: 0, position: "relative", transition: "background 0.15s", background: schedule.weekly.enabled ? "#f0ff5f" : "#D1D5DB", border: "none", padding: 0, cursor: "pointer" }}>
-                  <span style={{
-                    position: "absolute", top: 2, left: schedule.weekly.enabled ? 18 : 2,
-                    width: 16, height: 16, borderRadius: "50%", background: schedule.weekly.enabled ? "#141c30" : "white",
-                    boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.15s"
-                  }} />
-                </button>
-                <span className="text-[13px] text-gray-700 font-medium">{schedule.weekly.enabled ? "Enabled" : "Disabled"}</span>
-              </div>
-              <div>
-                <label className="block text-[12px] font-semibold text-gray-700 mb-1">Day of Week</label>
-                <select value={schedule.weekly.day}
-                  onChange={(e) => setSchedule((s) => ({ ...s, weekly: { ...s.weekly, day: e.target.value } }))}
-                  className="settings-input w-full">
-                  {DAY_OPTIONS.map((d) => <option key={d} value={d}>{d}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-[12px] font-semibold text-gray-700 mb-1">Send Time</label>
-                <input type="time" value={schedule.weekly.time}
-                  onChange={(e) => setSchedule((s) => ({ ...s, weekly: { ...s.weekly, time: e.target.value } }))}
-                  className="settings-input w-full" />
-              </div>
-              <div>
-                <label className="block text-[12px] font-semibold text-gray-700 mb-1">Timezone</label>
-                <select value={schedule.weekly.timezone}
-                  onChange={(e) => setSchedule((s) => ({ ...s, weekly: { ...s.weekly, timezone: e.target.value } }))}
-                  className="settings-input w-full">
-                  {TZ_OPTIONS.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
-                </select>
-              </div>
-              <button onClick={() => saveSchedule("weekly")} disabled={scheduleSaving === "weekly"}
-                className="bg-[#141c30] text-[#f0ff5f] px-4 py-2 rounded-lg text-[13px] font-semibold hover:opacity-80 disabled:opacity-40">
-                {scheduleSaving === "weekly" ? "Saving…" : "Save Schedule"}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* Info banner */}
       <div className={cardCls + " p-4 mb-5 text-[12.5px] text-gray-700 bg-gradient-to-r from-indigo-50/60 to-white flex items-start gap-3"}>
@@ -1409,14 +1366,8 @@ function AlertDeliveryPage({ settings, navigate, updateSettings }) {
           <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
         </svg>
         <div className="space-y-1">
-          <div className="font-semibold text-indigo-700">How alert delivery works</div>
-          <div>When a post crosses its category's <strong>Priority Threshold</strong>, VoC fires an alert. Each config below controls which channels receive it, subject to the cooldown period. <strong>Lark Group</strong> uses a webhook URL. <strong>Email</strong> sends to the configured address per category.</div>
-          <div className="text-[11.5px] text-gray-500 pt-0.5">
-            Owner assignment is configured in{" "}
-            <a href="#/settings" onClick={(e) => { e.preventDefault(); window.location.hash = "#/settings"; }} className="text-brand-500 font-semibold hover:underline">Settings → Routing Ownership</a>.
-            Alert thresholds are in{" "}
-            <a href="#/settings" onClick={(e) => { e.preventDefault(); window.location.hash = "#/settings"; }} className="text-brand-500 font-semibold hover:underline">Settings → Engagement Thresholds</a>.
-          </div>
+          <div className="font-semibold text-indigo-700">How alerts work</div>
+          <div>When a new high-engagement post is detected (per <a href="#/settings" onClick={(e) => { e.preventDefault(); window.location.hash = "#/settings"; }} className="text-brand-500 font-semibold hover:underline">Settings → Engagement thresholds</a>), an alert is pushed to all enabled recipients below. No high-engagement posts that day → nothing is sent.</div>
         </div>
       </div>
 
@@ -1425,206 +1376,60 @@ function AlertDeliveryPage({ settings, navigate, updateSettings }) {
       ) : fetchErr ? (
         <div className={cardCls + " p-8 text-center text-red-600 text-sm"}>{fetchErr}</div>
       ) : (
-        <div className={cardCls + " overflow-hidden"}>
-          <table className="w-full border-collapse text-[13px]">
-            <thead>
-              <tr>
-                {["On", "Category", "Lark Group", "Email", "Channels", "Threshold", "Cooldown", "Last Triggered", "Status", ""].map((h) => (
-                  <th key={h} className="text-left text-[10.5px] uppercase tracking-wider text-gray-500 font-semibold px-3 py-2 border-b border-gray-200 bg-gray-50 whitespace-nowrap">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(({ taxonomy: t, config: c }) => (
-                <tr key={t.key} className="align-middle hover:bg-gray-50/40">
-                  {/* Toggle */}
-                  <td className="px-3 py-3 border-b border-gray-100">
-                    {c ? (
-                      <button
-                        onClick={() => handleToggle(c)}
-                        className={"w-9 h-5 rounded-full transition-colors relative " + (c.enabled ? "bg-brand-500" : "bg-gray-300")}
-                        title={c.enabled ? "Click to disable" : "Click to enable"}>
-                        <span className={"absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform " + (c.enabled ? "translate-x-4" : "translate-x-0.5")} />
-                      </button>
-                    ) : (
-                      <span className="w-9 h-5 rounded-full bg-gray-100 inline-block" />
-                    )}
-                  </td>
-
-                  {/* Category */}
-                  <td className="px-3 py-3 border-b border-gray-100 font-semibold text-gray-900 whitespace-nowrap">
-                    <CategoryTag category={t.key} />
-                  </td>
-
-                  {/* Lark Group */}
-                  <td className="px-3 py-3 border-b border-gray-100 text-[12px] text-gray-700">
-                    {c && c.lark_group_name
-                      ? <span className="font-medium">{c.lark_group_name}</span>
-                      : <span className="text-gray-400 italic">—</span>}
-                  </td>
-
-                  {/* Email */}
-                  <td className="px-3 py-3 border-b border-gray-100 text-[12px] text-gray-700">
-                    {c && c.email_address
-                      ? <span className="font-medium">{c.email_address}</span>
-                      : <span className="text-gray-400 italic">—</span>}
-                  </td>
-
-                  {/* Channels */}
-                  <td className="px-3 py-3 border-b border-gray-100">
-                    {c && c.delivery_channels && c.delivery_channels.length > 0
-                      ? <div className="flex flex-wrap gap-1">
-                          {c.delivery_channels.map((ch) => (
-                            <span key={ch} className={"inline-block px-2 py-0.5 rounded-full text-[10.5px] font-semibold " + (ch === "lark_group" ? "bg-indigo-50 text-indigo-700" : "bg-green-50 text-green-700")}>
-                              {CHANNEL_LABELS[ch] || ch}
-                            </span>
-                          ))}
-                        </div>
-                      : <span className="text-gray-400 text-[12px] italic">None</span>}
-                  </td>
-
-                  {/* Threshold */}
-                  <td className="px-3 py-3 border-b border-gray-100 text-[12px]">
-                    {c ? (
-                      <span className={"font-semibold " + (c.priority_threshold === "High" ? "text-red-600" : c.priority_threshold === "Medium" ? "text-amber-600" : "text-green-700")}>
-                        {c.priority_threshold}
-                      </span>
-                    ) : <span className="text-gray-400">—</span>}
-                  </td>
-
-                  {/* Cooldown */}
-                  <td className="px-3 py-3 border-b border-gray-100 text-[12px] text-gray-700 whitespace-nowrap">
-                    {c ? `${c.cooldown_hours}h` : <span className="text-gray-400">—</span>}
-                  </td>
-
-                  {/* Last Triggered */}
-                  <td className="px-3 py-3 border-b border-gray-100 text-[12px] text-gray-500 whitespace-nowrap">
-                    {c && c.last_triggered_at
-                      ? new Date(c.last_triggered_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
-                      : <span className="text-gray-400">Never</span>}
-                  </td>
-
-                  {/* Delivery status + test feedback */}
-                  <td className="px-3 py-3 border-b border-gray-100 min-w-[120px]">
-                    {c && c.last_delivery_status ? (
-                      <span className={"text-[11px] font-semibold px-2 py-0.5 rounded-full " + (c.last_delivery_status === "sent" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600")}>
-                        {c.last_delivery_status}
-                      </span>
-                    ) : <span className="text-gray-400 text-[12px]">—</span>}
-                    {c && testState[`${c.id}_lark`] && (
-                      <div className={"text-[10.5px] mt-1 " + (testState[`${c.id}_lark`].loading ? "text-gray-400" : testState[`${c.id}_lark`].success ? "text-indigo-700" : "text-red-600")}>
-                        {testState[`${c.id}_lark`].loading ? "Sending Lark…" : (testState[`${c.id}_lark`].success ? "✓ Lark sent" : "✗ " + testState[`${c.id}_lark`].message)}
-                      </div>
-                    )}
-                    {c && testState[`${c.id}_email`] && (
-                      <div className={"text-[10.5px] mt-1 " + (testState[`${c.id}_email`].loading ? "text-gray-400" : testState[`${c.id}_email`].success ? "text-green-700" : "text-red-600")}>
-                        {testState[`${c.id}_email`].loading ? "Sending email…" : (testState[`${c.id}_email`].success ? "✓ Email sent" : "✗ " + testState[`${c.id}_email`].message)}
-                      </div>
-                    )}
-                  </td>
-
-                  {/* Actions */}
-                  <td className="px-3 py-3 border-b border-gray-100 whitespace-nowrap">
-                    <div className="flex items-center gap-1">
-                      {c ? (
-                        <>
-                          <button onClick={() => setEditTarget({ config: c })}
-                            className="text-[11.5px] text-gray-600 hover:text-gray-900 px-2 py-1 rounded hover:bg-gray-100 font-medium">
-                            Edit
-                          </button>
-                          {c.lark_group_webhook && (
-                            <button onClick={() => handleTestGroup(c.id)}
-                              className="text-[11.5px] text-indigo-600 hover:text-indigo-800 px-2 py-1 rounded hover:bg-indigo-50 font-medium"
-                              title="Test Lark group">
-                              Test Lark
-                            </button>
-                          )}
-                          {c.email_address && (
-                            <button onClick={() => handleTestEmail(c.id)}
-                              className="text-[11.5px] text-green-700 hover:text-green-900 px-2 py-1 rounded hover:bg-green-50 font-medium"
-                              title="Test email delivery">
-                              Test Email
-                            </button>
-                          )}
-                          <button onClick={() => handleDelete(c.id)}
-                            className="text-[11.5px] text-red-500 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50">
-                            ✕
-                          </button>
-                        </>
-                      ) : (
-                        <button onClick={() => setEditTarget({ taxonomy: t.key })}
-                          className="text-[11.5px] text-brand-500 hover:text-brand-700 px-2 py-1 rounded hover:bg-brand-50 font-semibold">
-                          + Configure
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <RecipientSection
+            channel="email"
+            title="Email Recipients"
+            subtitle="Email addresses that receive high-engagement post alerts."
+            items={emails}
+            addLabel="+ Add email"
+            emptyLabel="No email recipients yet."
+          />
+          <RecipientSection
+            channel="lark_group"
+            title="Lark Groups"
+            subtitle="Lark group webhooks that receive high-engagement post alerts."
+            items={groups}
+            addLabel="+ Add group"
+            emptyLabel="No Lark groups yet."
+          />
+        </>
       )}
 
-      {/* Edit / Create modal */}
+      {/* Add / Edit modal */}
       {editTarget && (
-        <AlertDeliveryModal
-          taxonomy={editTarget.taxonomy || (editTarget.config && editTarget.config.taxonomy)}
-          config={editTarget.config || null}
+        <AlertRecipientModal
+          channel={editTarget.channel}
+          item={editTarget.item}
           onClose={() => setEditTarget(null)}
-          onSave={handleSaveConfig}
+          onSave={handleSave}
         />
       )}
     </div>
   );
 }
 
-function AlertDeliveryModal({ taxonomy, config, onClose, onSave }) {
-  const isNew = !config;
+function AlertRecipientModal({ channel, item, onClose, onSave }) {
+  const isNew = !item;
+  const isEmail = channel === "email";
   const [form, setForm] = useP({
-    id:                      config ? config.id : undefined,
-    taxonomy:                taxonomy,
-    enabled:                 config ? config.enabled : true,
-    primary_owner_name:      config ? (config.primary_owner_name || "") : "",
-    primary_owner_lark_open_id: config ? (config.primary_owner_lark_open_id || "") : "",
-    lark_group_name:    config ? (config.lark_group_name || "") : "",
-    lark_group_webhook: config ? (config.lark_group_webhook || "") : "",
-    email_address:      config ? (config.email_address || "") : "",
-    delivery_channels:  config ? (config.delivery_channels || []) : [],
-    priority_threshold: config ? config.priority_threshold : "High",
-    cooldown_hours:     config ? config.cooldown_hours : 24,
+    id:      item ? item.id : undefined,
+    channel: channel,
+    target:  item ? (item.target || "") : "",
+    label:   item ? (item.label || "") : "",
+    enabled: item ? item.enabled : true,
   });
   const [saving, setSaving] = useP(false);
-  const [emailTestResult, setEmailTestResult] = useP(null);
 
   function set(key, val) { setForm((p) => ({ ...p, [key]: val })); }
 
-  function toggleChannel(ch) {
-    const chs = form.delivery_channels;
-    set("delivery_channels", chs.includes(ch) ? chs.filter((c) => c !== ch) : [...chs, ch]);
-  }
-
   async function handleSubmit(e) {
     e.preventDefault();
+    if (!form.target.trim()) { alert(isEmail ? "Email address is required." : "Webhook URL is required."); return; }
+    if (!isEmail && !/^https:\/\//i.test(form.target.trim())) { alert("Webhook URL must start with https://"); return; }
     setSaving(true);
-    const payload = {
-      ...form,
-      lark_group_name:    form.lark_group_name || null,
-      lark_group_webhook: form.lark_group_webhook || null,
-      email_address:      form.email_address || null,
-    };
-    await onSave(payload);
+    await onSave({ ...form, target: form.target.trim(), label: form.label.trim() });
     setSaving(false);
-  }
-
-  async function handleTestEmailModal() {
-    if (!form.id) return;
-    setEmailTestResult({ loading: true });
-    try {
-      const r = await fetch(`/api/v2/alert-delivery-configs/${form.id}/test-email`, { method: "POST" });
-      const d = await r.json();
-      setEmailTestResult(d);
-    } catch { setEmailTestResult({ success: false, message: "Request failed" }); }
   }
 
   useE(() => {
@@ -1632,107 +1437,69 @@ function AlertDeliveryModal({ taxonomy, config, onClose, onSave }) {
     return () => { document.body.style.overflow = ""; };
   }, []);
 
-  const taxLabel = VoC.TAXONOMY.find((t) => t.key === taxonomy);
+  const title = (isNew ? "Add " : "Edit ") + (isEmail ? "Email Recipient" : "Lark Group");
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-y-auto max-h-[90vh]">
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-y-auto max-h-[90vh]">
         <div className="px-6 pt-5 pb-4 border-b border-gray-200 flex items-center justify-between">
-          <div>
-            <div className="font-bold text-gray-900 text-[15px]">{isNew ? "Configure Alert Delivery" : "Edit Alert Delivery"}</div>
-            <div className="text-[12px] text-gray-500 mt-0.5">{taxLabel ? taxLabel.label : taxonomy}</div>
-          </div>
+          <div className="font-bold text-gray-900 text-[15px]">{title}</div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg font-bold">✕</button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5">
-          {/* Lark Group section */}
-          <div>
-            <div className="text-[11px] uppercase tracking-widest text-gray-400 font-bold mb-2.5">Lark Group Channel</div>
-            <div className="space-y-3">
+        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+          {isEmail ? (
+            <>
+              <div>
+                <label className="block text-[12px] font-semibold text-gray-700 mb-1">Email Address</label>
+                <input type="email" value={form.target} onChange={(e) => set("target", e.target.value)}
+                  placeholder="e.g. risk-team@advancegroup.com"
+                  className="settings-input w-full" />
+              </div>
+              <div>
+                <label className="block text-[12px] font-semibold text-gray-700 mb-1">Name <span className="text-gray-400 font-normal">(optional)</span></label>
+                <input value={form.label} onChange={(e) => set("label", e.target.value)}
+                  placeholder="e.g. Risk Team"
+                  className="settings-input w-full" />
+              </div>
+            </>
+          ) : (
+            <>
               <div>
                 <label className="block text-[12px] font-semibold text-gray-700 mb-1">Group Name</label>
-                <input value={form.lark_group_name} onChange={(e) => set("lark_group_name", e.target.value)}
+                <input value={form.label} onChange={(e) => set("label", e.target.value)}
                   placeholder="e.g. #voc-risk-alerts"
                   className="settings-input w-full" />
               </div>
               <div>
                 <label className="block text-[12px] font-semibold text-gray-700 mb-1">Webhook URL</label>
-                <input type="password" value={form.lark_group_webhook} onChange={(e) => set("lark_group_webhook", e.target.value)}
+                <input type="password" value={form.target} onChange={(e) => set("target", e.target.value)}
                   placeholder="https://open.larksuite.com/open-apis/bot/v2/hook/…"
                   className="settings-input w-full font-mono text-[11.5px]" />
-                <div className="text-[11px] text-gray-400 mt-1">Custom bot webhook from Lark group settings. Stored securely and masked here.</div>
+                <div className="text-[11px] text-gray-400 mt-1">Custom bot webhook from Lark group settings. Stored securely and masked in the list.</div>
               </div>
-            </div>
+            </>
+          )}
+
+          <div className="flex items-center gap-3">
+            <button type="button"
+              onClick={() => set("enabled", !form.enabled)}
+              style={{ width: 36, height: 20, borderRadius: 10, flexShrink: 0, position: "relative", transition: "background 0.15s", background: form.enabled ? "#f0ff5f" : "#D1D5DB", border: "none", padding: 0, cursor: "pointer" }}>
+              <span style={{
+                position: "absolute", top: 2, left: form.enabled ? 18 : 2,
+                width: 16, height: 16, borderRadius: "50%", background: form.enabled ? "#141c30" : "white",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.15s"
+              }} />
+            </button>
+            <span className="text-[13px] text-gray-700 font-medium">{form.enabled ? "Enabled" : "Disabled"}</span>
           </div>
 
-          {/* Email section */}
-          <div>
-            <div className="text-[11px] uppercase tracking-widest text-gray-400 font-bold mb-2.5">Email</div>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-[12px] font-semibold text-gray-700 mb-1">Recipient Email Address</label>
-                <input type="email" value={form.email_address} onChange={(e) => set("email_address", e.target.value)}
-                  placeholder="e.g. risk-team@advancegroup.com"
-                  className="settings-input w-full" />
-                <div className="text-[11px] text-gray-400 mt-1">Alert emails for this category will be sent to this address.</div>
-              </div>
-              {!isNew && form.email_address && (
-                <div className="flex items-center gap-2">
-                  <button type="button" onClick={handleTestEmailModal}
-                    className="text-[12px] text-green-700 hover:text-green-900 px-3 py-1.5 rounded-lg border border-green-200 hover:bg-green-50 font-semibold">
-                    Send Test Email
-                  </button>
-                  {emailTestResult && !emailTestResult.loading && (
-                    <span className={"text-[11.5px] " + (emailTestResult.success ? "text-green-700" : "text-red-600")}>
-                      {emailTestResult.success ? "✓ " : "✗ "}{emailTestResult.message}
-                    </span>
-                  )}
-                  {emailTestResult && emailTestResult.loading && <span className="text-[11.5px] text-gray-400">Sending…</span>}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Delivery channels */}
-          <div>
-            <div className="text-[11px] uppercase tracking-widest text-gray-400 font-bold mb-2.5">Active Delivery Channels</div>
-            <div className="flex gap-4">
-              {[["lark_group", "Lark Group", "indigo"], ["email", "Email", "green"]].map(([ch, label, color]) => (
-                <label key={ch} className={"flex items-center gap-2 cursor-pointer px-3 py-2 rounded-lg border " + (form.delivery_channels.includes(ch) ? `border-${color}-300 bg-${color}-50` : "border-gray-200")}>
-                  <input type="checkbox" checked={form.delivery_channels.includes(ch)} onChange={() => toggleChannel(ch)}
-                    className="accent-brand-500 w-3.5 h-3.5" />
-                  <span className={"text-[12.5px] font-semibold " + (form.delivery_channels.includes(ch) ? `text-${color}-700` : "text-gray-600")}>{label}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          {/* Threshold + Cooldown */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-[12px] font-semibold text-gray-700 mb-1">Priority Threshold</label>
-              <select value={form.priority_threshold} onChange={(e) => set("priority_threshold", e.target.value)}
-                className="settings-input w-full">
-                {THRESHOLD_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
-              <div className="text-[11px] text-gray-400 mt-1">Alert fires when post reaches this engagement level.</div>
-            </div>
-            <div>
-              <label className="block text-[12px] font-semibold text-gray-700 mb-1">Cooldown (hours)</label>
-              <input type="number" min="1" max="168" value={form.cooldown_hours} onChange={(e) => set("cooldown_hours", Number(e.target.value))}
-                className="settings-input w-full" />
-              <div className="text-[11px] text-gray-400 mt-1">Minimum gap between alerts for this category.</div>
-            </div>
-          </div>
-
-          {/* Footer */}
           <div className="pt-2 flex items-center justify-between border-t border-gray-100">
             <button type="button" onClick={onClose} className="text-[13px] text-gray-500 hover:text-gray-700 font-medium">Cancel</button>
             <button type="submit" disabled={saving}
               className="bg-brand-500 text-white px-5 py-2 rounded-lg text-[13px] font-semibold hover:bg-brand-600 disabled:opacity-60">
-              {saving ? "Saving…" : isNew ? "Create Config" : "Save Changes"}
+              {saving ? "Saving…" : isNew ? "Add" : "Save Changes"}
             </button>
           </div>
         </form>
