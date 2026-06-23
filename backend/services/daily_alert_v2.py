@@ -8,7 +8,6 @@ from sqlalchemy import select
 
 from backend.config import settings as app_config
 from backend.database import async_session
-from backend.models.alert_delivery_config import AlertDeliveryConfig
 from backend.models.alert_message import AlertMessage
 from backend.models.app_settings import AppSettings
 from backend.models.post import Post
@@ -155,99 +154,55 @@ async def generate_and_send_daily_alert() -> None:
         date_str = now_utc.strftime("%Y-%m-%d")
         generated_at = now_utc
 
-        # 5. Exception-based: only fire if there are HIGH-engagement posts today.
-        #    No high-engagement posts → send nothing (record a skip for audit/dedup).
+        # 5. Trigger = HIGH-engagement posts today (engagement_level from the global
+        #    Engagement thresholds). No high-engagement posts → send nothing, record nothing.
         high_posts = [p for p in posts if (p.engagement_level or "").lower() == "high"]
         if not high_posts:
-            db.add(AlertMessage(
-                alert_type="daily_alert",
-                title=f"VoC Daily Alert — {date_str}",
-                message_body="No high-engagement posts in the last 24h — not sent.",
-                status="skipped",
-                generated_at=generated_at,
-            ))
-            await db.commit()
             return
 
         title, message_body, html_body = build_daily_digest(
             high_posts, date_str, headline="high-engagement posts"
         )
 
-        # 6. Resolve delivery channels
-        configs = (
-            await db.execute(
-                select(AlertDeliveryConfig).where(AlertDeliveryConfig.enabled == True)
-            )
+        # 6. Push to every enabled recipient (email list + Lark group list).
+        from backend.models.alert_recipient import AlertRecipient
+        recipients = (
+            await db.execute(select(AlertRecipient).where(AlertRecipient.enabled == True))
         ).scalars().all()
+        if not recipients:
+            return  # nowhere to send — Alert History only records actual sends
 
-        lark_group_configs = [
-            c for c in configs
-            if c.delivery_channels and "lark_group" in c.delivery_channels and c.lark_group_webhook
-        ]
         from backend.services.email_sender import send_alert_email
-        email_configs = [
-            c for c in configs
-            if c.delivery_channels and "email" in c.delivery_channels and c.email_address
-        ]
+        from backend.services.safe_http import safe_webhook_post
 
-        if not lark_group_configs and not email_configs:
-            # High-engagement posts exist but nowhere to send — record skip.
-            db.add(AlertMessage(
-                alert_type="daily_alert", title=title, message_body=message_body,
-                status="skipped", generated_at=generated_at,
-            ))
-            await db.commit()
-            return
-
-        for config in lark_group_configs:
+        for r in recipients:
             alert_msg = AlertMessage(
                 alert_type="daily_alert",
                 title=title,
                 message_body=message_body,
-                taxonomy=config.taxonomy,
-                delivery_channel="lark_group",
-                target_name=config.lark_group_name,
-                target_id=config.lark_group_webhook,
+                delivery_channel=r.channel,
+                target_name=r.label or r.target,
+                target_id=r.target,
                 status="pending",
                 generated_at=generated_at,
             )
             db.add(alert_msg)
             await db.flush()
 
-            from backend.services.safe_http import safe_webhook_post
-            ok, msg = await safe_webhook_post(
-                config.lark_group_webhook,
-                json={"msg_type": "text", "content": {"text": message_body}},
-            )
+            if r.channel == "lark_group":
+                ok, err = await safe_webhook_post(
+                    r.target, json={"msg_type": "text", "content": {"text": message_body}}
+                )
+            else:
+                ok, err = await send_alert_email(
+                    to_address=r.target,
+                    subject=f"[Atome VoC] {title}",
+                    body_text=message_body,
+                    body_html=html_body,
+                )
             alert_msg.status = "sent" if ok else "failed"
             alert_msg.sent_at = datetime.now(tz=timezone.utc) if ok else None
             if not ok:
-                alert_msg.error_message = msg[:500]
-
-        for config in email_configs:
-            alert_msg = AlertMessage(
-                alert_type="daily_alert",
-                title=title,
-                message_body=message_body,
-                taxonomy=config.taxonomy,
-                delivery_channel="email",
-                target_name=config.email_address,
-                target_id=config.email_address,
-                status="pending",
-                generated_at=generated_at,
-            )
-            db.add(alert_msg)
-            await db.flush()
-
-            success, err = await send_alert_email(
-                to_address=config.email_address,
-                subject=f"[Atome VoC] {title}",
-                body_text=message_body,
-                body_html=html_body,
-            )
-            alert_msg.status = "sent" if success else "failed"
-            alert_msg.sent_at = datetime.now(tz=timezone.utc) if success else None
-            if not success:
-                alert_msg.error_message = err[:500]
+                alert_msg.error_message = (err or "")[:500]
 
         await db.commit()

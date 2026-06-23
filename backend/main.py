@@ -7,7 +7,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api import alert_delivery, alert_messages, alerts, analytics, auth, crawler, feedback, incidents, lark_bots, monitor, routing, taxonomy, v2
+from backend.api import alert_delivery, alert_messages, alert_recipients, alerts, analytics, auth, crawler, feedback, incidents, lark_bots, monitor, routing, taxonomy, v2
 from backend.config import settings
 
 
@@ -66,12 +66,12 @@ async def _scheduled_crawl():
 
 
 async def _check_alert_schedules():
-    """Check and fire daily alert and weekly summary if their schedule matches now."""
+    """Fire the daily high-engagement alert if there are new high-engagement posts."""
     from backend.services.daily_alert_v2 import generate_and_send_daily_alert
-    from backend.services.weekly_summary_v2 import generate_and_send_weekly_summary
 
     await generate_and_send_daily_alert()
-    await generate_and_send_weekly_summary()
+    # Weekly summary is disabled: alerting is now exclusively the daily
+    # high-engagement push (Alert History records only high-engagement sends).
 
 
 app = FastAPI(
@@ -126,6 +126,7 @@ app.include_router(crawler.router, dependencies=_admin)
 app.include_router(lark_bots.router, dependencies=_admin)
 app.include_router(routing.router, dependencies=_admin)
 app.include_router(alert_delivery.router, dependencies=_admin)
+app.include_router(alert_recipients.router, dependencies=_admin)
 
 
 @app.get("/health")

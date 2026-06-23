@@ -10,6 +10,7 @@ from backend.models.app_settings import AppSettings
 from backend.models.correction import Correction
 from backend.models.alert_delivery_config import AlertDeliveryConfig
 from backend.models.alert_message import AlertMessage
+from backend.models.alert_recipient import AlertRecipient
 
 __all__ = [
     "User",
@@ -25,4 +26,5 @@ __all__ = [
     "Correction",
     "AlertDeliveryConfig",
     "AlertMessage",
+    "AlertRecipient",
 ]
